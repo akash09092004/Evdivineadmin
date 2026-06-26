@@ -1,0 +1,6 @@
+.expo
+.expo/
+node_modules/
+dist/
+build/
+*.log
