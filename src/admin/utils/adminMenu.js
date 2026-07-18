@@ -1,0 +1,215 @@
+import { Colors } from "../../theme/colors";
+
+export const adminMenu = [
+  {
+    id: 1,
+    title: "Dashboard",
+    screen: "Dashboard",
+    routeName: "AdminHome",
+    icon: "grid-outline",
+  },
+  {
+    id: 2,
+    title: "My Profile",
+    screen: "MyProfile",
+    icon: "person-outline",
+  },
+  {
+    id: 3,
+    title: "Registered User",
+    screen: "RegisteredUser",
+    icon: "people-outline",
+  },
+  {
+    id: 4,
+    title: "User Credit",
+    screen: "UserCredit",
+    icon: "wallet-outline",
+  },
+  {
+    id: 5,
+    title: "Refund Transactions List",
+    screen: "RefundTransactionsList",
+    icon: "receipt-outline",
+  },
+  {
+    id: 6,
+    title: "Refund Amount",
+    screen: "RefundAmount",
+    icon: "cash-outline",
+  },
+  {
+    id: 7,
+    title: "Coupons",
+    screen: "Coupons",
+    icon: "pricetag-outline",
+  },
+  {
+    id: 8,
+    title: "Recharge Plans",
+    screen: "RechargePlans",
+    icon: "card-outline",
+  },
+  {
+    id: 8.1,
+    title: "Slot Plans",
+    screen: "SlotPlans",
+    icon: "hourglass-outline",
+  },
+  {
+    id: 8.2,
+    title: "Availability",
+    screen: "Availability",
+    icon: "calendar-outline",
+  },
+  {
+    id: 8.3,
+    title: "Leaves",
+    screen: "Leaves",
+    icon: "airplane-outline",
+  },
+  {
+    id: 8.4,
+    title: "Blocked Times",
+    screen: "BlockedTimes",
+    icon: "ban-outline",
+  },
+  {
+    id: 9,
+    title: "Bonus Config",
+    screen: "BonusesConfig",
+    icon: "gift-outline",
+  },
+  {
+    id: 10,
+    title: "Banners",
+    screen: "Banners",
+    icon: "images-outline",
+  },
+  {
+    id: 11,
+    title: "Rashis",
+    screen: "Rashis",
+    icon: "sparkles-outline",
+  },
+  {
+    id: 12,
+    title: "Page Content",
+    screen: "PageContent",
+    icon: "document-text-outline",
+  },
+  {
+    id: 13,
+    title: "Drop Me List",
+    screen: "DropMeList",
+    icon: "chatbox-ellipses-outline",
+  },
+  {
+    id: 14,
+    title: "Chat Center",
+    screen: "ChatRequests",
+    icon: "chatbubbles-outline",
+  },
+  {
+    id: 15,
+    title: "Subscriber List",
+    screen: "SubscriberList",
+    icon: "mail-outline",
+  },
+  {
+    id: 16,
+    title: "History Notes",
+    screen: "HistoryNotes",
+    icon: "time-outline",
+  },
+  {
+    id: 17,
+    title: "Close Request",
+    screen: "CloseRequest",
+    icon: "close-circle-outline",
+  },
+  {
+    id: 18,
+    title: "Change Password",
+    screen: "ChangePassword",
+    icon: "lock-closed-outline",
+  },
+  {
+    id: 19,
+    title: "Blog Management",
+    icon: "reader-outline",
+    children: [
+      {
+        id: "blog-list",
+        title: "All Blogs",
+        screen: "BlogList",
+        routeName: "AdminBlogs",
+        icon: "library-outline",
+      },
+      {
+        id: "blog-create",
+        title: "Add New Blog",
+        screen: "BlogCreate",
+        routeName: "AdminBlogCreate",
+        icon: "add-circle-outline",
+      },
+      {
+        id: "blog-categories",
+        title: "Blog Categories",
+        screen: "BlogCategories",
+        routeName: "AdminBlogCategories",
+        icon: "albums-outline",
+      },
+    ],
+  },
+  {
+    id: 20,
+    title: "Logout",
+    screen: "Logout",
+    icon: "log-out-outline",
+    danger: true,
+  },
+];
+
+export const dashboardStats = [
+  {
+    id: 1,
+    title: "Registered Users",
+    value: "120",
+    icon: "people-outline",
+    color: Colors.primary,
+  },
+  {
+    id: 2,
+    title: "Total Bookings",
+    value: "75",
+    icon: "calendar-outline",
+    color: Colors.accent,
+  },
+  {
+    id: 3,
+    title: "Refund Requests",
+    value: "18",
+    icon: "cash-outline",
+    color: Colors.accent2,
+  },
+  {
+    id: 4,
+    title: "Subscribers",
+    value: "340",
+    icon: "mail-outline",
+    color: "#22C55E",
+  },
+];
+
+export const pageContentOptions = [
+  "Home Page",
+  "About Us",
+  "Satisfaction Guarantee",
+  "Privacy Policies",
+  "Terms and Conditions",
+  "Agreement",
+  "Advisor Terms and Conditions",
+  "FAQ",
+  "Contact Us",
+];

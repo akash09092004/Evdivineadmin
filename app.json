@@ -4,6 +4,23 @@
       "eas": {
         "projectId": "02ea3169-a38d-464e-94d2-07a76d2e7473"
       }
-    }
+    },
+    "android": {
+      "package": "com.akashgupta123.evdivineapp",
+      "usesCleartextTraffic": true
+    },
+    "ios": {
+      "bundleIdentifier": "com.akashgupta123.evdivineapp",
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        },
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "plugins": [
+      "expo-audio",
+      "expo-asset"
+    ]
   }
 }

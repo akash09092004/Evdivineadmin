@@ -4,3 +4,21 @@ node_modules/
 dist/
 build/
 *.log
+
+# Environment
+.env
+.env.*
+**/.env
+**/.env.*
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Android Keys
+*.jks
+*.keystore
