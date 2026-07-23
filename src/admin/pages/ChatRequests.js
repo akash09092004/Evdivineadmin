@@ -147,14 +147,27 @@ function getPillStyle(status) {
   return "statuspending";
 }
 
-function readFileAsDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () =>
-      reject(reader.error || new Error("File read failed"));
-    reader.readAsDataURL(file);
-  });
+function areSessionsEqual(previous, next) {
+  if (!previous || !next) {
+    return false;
+  }
+
+  return (
+    previous.id === next.id &&
+    previous.status === next.status &&
+    previous.adminName === next.adminName &&
+    previous.adminId === next.adminId &&
+    previous.userId === next.userId &&
+    previous.chatroomId === next.chatroomId &&
+    previous.hostId === next.hostId &&
+    previous.freeMinutes === next.freeMinutes &&
+    previous.requestedAt === next.requestedAt &&
+    previous.updatedAt === next.updatedAt &&
+    previous.startedAt === next.startedAt &&
+    previous.endedAt === next.endedAt &&
+    previous.approvedAt === next.approvedAt &&
+    previous.rejectedAt === next.rejectedAt
+  );
 }
 
 function getAttachmentKind(file) {
@@ -168,6 +181,31 @@ function getSpeechRecognitionCtor() {
   if (typeof window === "undefined") return null;
 
   return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+}
+
+function buildMessagePayload(thread, selectedSession, draftMessage, attachment) {
+  const payload = new FormData();
+
+  payload.append("sessionId", thread.kind === "session" ? thread.id : selectedSession.id);
+  payload.append(
+    "chatroomId",
+    thread.kind === "room" ? thread.id : selectedSession.chatroomId || ""
+  );
+  payload.append("text", draftMessage);
+  payload.append("message", draftMessage);
+  payload.append("content", draftMessage);
+  payload.append("body", draftMessage);
+  payload.append("type", attachment ? attachment.kind : "text");
+  payload.append("transcription", "");
+  payload.append("metadata", JSON.stringify({}));
+  payload.append("mediaUrl", "");
+
+  if (attachment?.file) {
+    const fieldName = attachment.kind === "image" ? "image" : "file";
+    payload.append(fieldName, attachment.file);
+  }
+
+  return payload;
 }
 
 export default function ChatRequests() {
@@ -295,11 +333,11 @@ export default function ChatRequests() {
 
     const sessionTimer = setInterval(() => {
       refreshSelectedSession().catch(() => {});
-    }, 3000);
+    }, 10000);
 
     const listTimer = setInterval(() => {
       loadSessions().catch(() => {});
-    }, 5000);
+    }, 20000);
 
     return () => {
       clearInterval(sessionTimer);
@@ -396,7 +434,20 @@ export default function ChatRequests() {
         "results",
       ]).map(normalizeMessage);
 
-      setSelectedSession(backendSession);
+      setSelectedSession((previous) => {
+        if (!previous) {
+          return backendSession;
+        }
+
+        const mergedSession = {
+          ...previous,
+          ...backendSession,
+        };
+
+        return areSessionsEqual(previous, mergedSession)
+          ? previous
+          : mergedSession;
+      });
       setSessionMessages((previous) => {
         const previousIds = previous.map((item) => item.id).join("|");
         const nextIds = list.map((item) => item.id).join("|");
@@ -483,18 +534,13 @@ export default function ChatRequests() {
         return;
       }
 
-      const nextAttachments = await Promise.all(
-        files.map(async (file) => {
-          const dataUrl = await readFileAsDataUrl(file);
-          return {
-            id: `${Date.now()}-${file.name}`,
-            name: file.name,
-            kind: getAttachmentKind(file),
-            mimeType: file.type || "application/octet-stream",
-            uri: dataUrl,
-          };
-        })
-      );
+      const nextAttachments = files.map((file) => ({
+        id: `${Date.now()}-${file.name}`,
+        name: file.name,
+        kind: getAttachmentKind(file),
+        mimeType: file.type || "application/octet-stream",
+        file,
+      }));
 
       setAttachments((prev) => [...prev, ...nextAttachments]);
     };
@@ -588,21 +634,23 @@ export default function ChatRequests() {
       return;
     }
 
-    const imageAttachment = attachments.find((item) => item.kind === "image");
+    const attachment = attachments[0] || null;
     const thread = getChatThreadDescriptor(selectedSession);
-    const payload = {
-      sessionId: thread.kind === "session" ? thread.id : selectedSession.id,
-      chatroomId:
-        thread.kind === "room" ? thread.id : selectedSession.chatroomId,
-      text: trimmed,
-      message: trimmed,
-      content: trimmed,
-      body: trimmed,
-      type: imageAttachment ? "image" : "text",
-      mediaUrl: imageAttachment?.uri || "",
-      transcription: "",
-      metadata: {},
-    };
+    const payload = attachment
+      ? buildMessagePayload(thread, selectedSession, trimmed, attachment)
+      : {
+          sessionId: thread.kind === "session" ? thread.id : selectedSession.id,
+          chatroomId:
+            thread.kind === "room" ? thread.id : selectedSession.chatroomId,
+          text: trimmed,
+          message: trimmed,
+          content: trimmed,
+          body: trimmed,
+          type: "text",
+          mediaUrl: "",
+          transcription: "",
+          metadata: {},
+        };
 
     setSending(true);
     try {

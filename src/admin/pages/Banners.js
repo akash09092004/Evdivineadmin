@@ -53,21 +53,44 @@ const emptyForm = {
   title: "",
   subtitle: "",
   description: "",
+  shortDescription: "",
+  longContent: "",
+  benefits: "",
+  consultationPrice: "",
+  offerPrice: "",
   imageUrl: "",
-  linkType: "screen",
+  linkType: "none",
   linkValue: "",
   sortOrder: 1,
   isActive: true,
 };
 
 function normalizeBanner(item, index = 0) {
+  const consultationPrice = Number(
+    item?.consultationPrice ?? item?.price ?? item?.amount ?? 0
+  );
+  const offerPrice = Number(
+    item?.offerPrice ??
+      item?.offer ??
+      item?.discountPrice ??
+      item?.salePrice ??
+      0
+  );
+
   return {
     id: item?._id || item?.id || `banner-${index + 1}`,
     title: item?.title || "Untitled Banner",
     subtitle: item?.subtitle || "",
-    description: item?.description || "",
+    description: item?.description || item?.shortDescription || "",
+    shortDescription: item?.shortDescription || item?.description || "",
+    longContent: item?.longContent || item?.content || "",
+    benefits: item?.benefits || "",
+    consultationPrice: Number.isFinite(consultationPrice)
+      ? consultationPrice
+      : "",
+    offerPrice: Number.isFinite(offerPrice) ? offerPrice : "",
     imageUrl: resolveAssetUrl(item?.imageUrl || item?.image || ""),
-    linkType: item?.linkType || "screen",
+    linkType: item?.linkType || "none",
     linkValue: item?.linkValue || "",
     sortOrder: item?.sortOrder ?? index + 1,
     isActive: item?.isActive ?? item?.active ?? true,
@@ -107,16 +130,34 @@ function getFileName(value) {
   }
 }
 
-function createBannerFormData(form, imageFile) {
+function formatUsd(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) {
+    return "";
+  }
+
+  return `$${number.toLocaleString("en-US")}`;
+}
+
+function createBannerFormData(form, imageFile, removeImage = false) {
   const payload = new FormData();
 
   payload.append("title", form.title.trim());
   payload.append("subtitle", form.subtitle.trim());
   payload.append("description", form.description.trim());
-  payload.append("linkType", form.linkType.trim() || "screen");
+  payload.append("shortDescription", form.shortDescription.trim());
+  payload.append("longContent", form.longContent.trim());
+  payload.append("benefits", form.benefits.trim());
+  payload.append(
+    "consultationPrice",
+    String(Number(form.consultationPrice) || 0)
+  );
+  payload.append("offerPrice", String(Number(form.offerPrice) || 0));
+  payload.append("linkType", form.linkType.trim() || "none");
   payload.append("linkValue", form.linkValue.trim());
   payload.append("sortOrder", String(Number(form.sortOrder) || 1));
   payload.append("isActive", String(Boolean(form.isActive)));
+  payload.append("removeImage", String(Boolean(removeImage)));
 
   if (imageFile) {
     payload.append("image", imageFile);
@@ -215,6 +256,7 @@ export default function Banners() {
   const [selectedBannerId, setSelectedBannerId] = useState("");
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState("");
+  const [removeImage, setRemoveImage] = useState(false);
   const [form, setForm] = useState(emptyForm);
 
   const loadBanners = async () => {
@@ -264,8 +306,13 @@ export default function Banners() {
         item.title,
         item.subtitle,
         item.description,
+        item.shortDescription,
+        item.longContent,
+        item.benefits,
         item.linkType,
         item.linkValue,
+        String(item.consultationPrice),
+        String(item.offerPrice),
         String(item.sortOrder),
       ]
         .join(" ")
@@ -300,6 +347,7 @@ export default function Banners() {
     setSelectedBannerId("");
     setImageFile(null);
     setImagePreview("");
+    setRemoveImage(false);
     setForm(emptyForm);
   };
 
@@ -335,6 +383,7 @@ export default function Banners() {
 
       setImageFile(file);
       setImagePreview(preview);
+      setRemoveImage(false);
       updateForm("imageUrl", "");
     };
 
@@ -346,6 +395,7 @@ export default function Banners() {
 
     setImageFile(null);
     setImagePreview("");
+    setRemoveImage(true);
     updateForm("imageUrl", "");
   };
 
@@ -355,13 +405,25 @@ export default function Banners() {
     setSelectedBannerId(banner.id);
     setImageFile(null);
     setImagePreview("");
+    setRemoveImage(false);
 
     setForm({
       title: banner.title || "",
       subtitle: banner.subtitle || "",
       description: banner.description || "",
+      shortDescription: banner.shortDescription || banner.description || "",
+      longContent: banner.longContent || "",
+      benefits: banner.benefits || "",
+      consultationPrice:
+        banner.consultationPrice !== "" && banner.consultationPrice !== null
+          ? String(banner.consultationPrice)
+          : "",
+      offerPrice:
+        banner.offerPrice !== "" && banner.offerPrice !== null
+          ? String(banner.offerPrice)
+          : "",
       imageUrl: banner.imageUrl || "",
-      linkType: banner.linkType || "screen",
+      linkType: banner.linkType || "none",
       linkValue: banner.linkValue || "",
       sortOrder: Number(banner.sortOrder || 1),
       isActive: Boolean(banner.isActive),
@@ -386,7 +448,7 @@ export default function Banners() {
       return false;
     }
 
-    if (selectedBannerId && !imageFile && !form.imageUrl.trim()) {
+    if (selectedBannerId && !imageFile && !form.imageUrl.trim() && !removeImage) {
       Alert.alert("Required", "Banner image upload karo.");
       return false;
     }
@@ -407,16 +469,23 @@ export default function Banners() {
         title: form.title.trim(),
         subtitle: form.subtitle.trim(),
         description: form.description.trim(),
+        shortDescription: form.shortDescription.trim(),
+        longContent: form.longContent.trim(),
+        benefits: form.benefits.trim(),
+        consultationPrice: Number(form.consultationPrice) || 0,
+        offerPrice: Number(form.offerPrice) || 0,
         imageUrl: form.imageUrl.trim(),
-        linkType: form.linkType.trim() || "screen",
+        linkType: form.linkType.trim() || "none",
         linkValue: form.linkValue.trim(),
         sortOrder: Number(form.sortOrder) || 1,
         isActive: Boolean(form.isActive),
       };
 
-      const payload = imageFile
-        ? createBannerFormData(cleanedForm, imageFile)
-        : cleanedForm;
+      const payload = createBannerFormData(
+        cleanedForm,
+        imageFile,
+        removeImage && Boolean(selectedBannerId)
+      );
 
       if (selectedBannerId) {
         await adminPutBanner(selectedBannerId, payload);
@@ -687,6 +756,66 @@ export default function Banners() {
               multiline
             />
 
+            <FormField
+              label="Short Description"
+              icon="chatbox-ellipses-outline"
+              value={form.shortDescription}
+              onChangeText={(text) => updateForm("shortDescription", text)}
+              placeholder="Short offer description..."
+              multiline
+            />
+
+            <FormField
+              label="Long Content"
+              icon="reader-outline"
+              value={form.longContent}
+              onChangeText={(text) => updateForm("longContent", text)}
+              placeholder="Full offer details here..."
+              multiline
+            />
+
+            <FormField
+              label="Benefits"
+              icon="star-outline"
+              value={form.benefits}
+              onChangeText={(text) => updateForm("benefits", text)}
+              placeholder="Benefit 1, Benefit 2, Benefit 3"
+              multiline
+            />
+
+            <View
+              style={[
+                styles.twoColumnRow,
+                isSmallMobile && styles.twoColumnMobile,
+              ]}
+            >
+              <View style={styles.column}>
+                <FormField
+                  label="Consultation Price ($)"
+                  icon="pricetag-outline"
+                  value={String(form.consultationPrice || "")}
+                  onChangeText={(text) =>
+                    updateForm("consultationPrice", text.replace(/[^0-9.]/g, ""))
+                  }
+                  placeholder="99"
+                  keyboardType="numeric"
+                />
+              </View>
+
+              <View style={styles.column}>
+                <FormField
+                  label="Offer Price ($)"
+                  icon="cash-outline"
+                  value={String(form.offerPrice || "")}
+                  onChangeText={(text) =>
+                    updateForm("offerPrice", text.replace(/[^0-9.]/g, ""))
+                  }
+                  placeholder="49"
+                  keyboardType="numeric"
+                />
+              </View>
+            </View>
+
             <View style={styles.fieldGroup}>
               <Text style={styles.label}>Banner Image</Text>
 
@@ -746,7 +875,7 @@ export default function Banners() {
                   icon="navigate-outline"
                   value={form.linkType}
                   onChangeText={(text) => updateForm("linkType", text)}
-                  placeholder="screen"
+                  placeholder="none"
                 />
               </View>
 
@@ -955,6 +1084,24 @@ export default function Banners() {
                   </Text>
                 ) : null}
 
+                {form.shortDescription ? (
+                  <Text style={styles.previewLongDescription} numberOfLines={3}>
+                    {form.shortDescription}
+                  </Text>
+                ) : null}
+
+                {form.longContent ? (
+                  <Text style={styles.previewLongText} numberOfLines={4}>
+                    {form.longContent}
+                  </Text>
+                ) : null}
+
+                {form.benefits ? (
+                  <Text style={styles.previewBenefits} numberOfLines={2}>
+                    {form.benefits}
+                  </Text>
+                ) : null}
+
                 <View style={styles.previewBottomRow}>
                   <View style={styles.previewLinkBadge}>
                     <Ionicons
@@ -964,10 +1111,36 @@ export default function Banners() {
                     />
 
                     <Text style={styles.previewLinkText} numberOfLines={1}>
-                      {form.linkType || "screen"}
+                      {form.linkType || "none"}
                       {" · "}
                       {form.linkValue || "No link"}
                     </Text>
+                  </View>
+
+                  <View style={styles.previewPriceRow}>
+                    <View style={styles.previewPriceBadge}>
+                      <Ionicons
+                        name="logo-usd"
+                        size={12}
+                        color={COLORS.primary}
+                      />
+                      <Text style={styles.previewPriceText}>
+                        {form.consultationPrice
+                          ? formatUsd(form.consultationPrice)
+                          : "No price"}
+                      </Text>
+                    </View>
+
+                    <View style={[styles.previewPriceBadge, styles.offerBadge]}>
+                      <Ionicons
+                        name="logo-usd"
+                        size={12}
+                        color={COLORS.red}
+                      />
+                      <Text style={[styles.previewPriceText, styles.offerText]}>
+                        {form.offerPrice ? formatUsd(form.offerPrice) : "No offer"}
+                      </Text>
+                    </View>
                   </View>
 
                   <Text style={styles.previewOrder}>
@@ -1111,6 +1284,38 @@ export default function Banners() {
                               banner.description ||
                               "No subtitle added"}
                           </Text>
+
+                          {(banner.consultationPrice || banner.offerPrice) ? (
+                            <View style={styles.bannerPriceRow}>
+                              <View style={styles.priceBadge}>
+                                <Ionicons
+                                  name="logo-usd"
+                                  size={12}
+                                  color={COLORS.primary}
+                                />
+                                <Text style={styles.priceBadgeText}>
+                                  {banner.consultationPrice
+                                    ? formatUsd(banner.consultationPrice)
+                                    : "No price"}
+                                </Text>
+                              </View>
+
+                              <View style={[styles.priceBadge, styles.offerBadge]}>
+                                <Ionicons
+                                  name="logo-usd"
+                                  size={12}
+                                  color={COLORS.red}
+                                />
+                                <Text
+                                  style={[styles.priceBadgeText, styles.offerText]}
+                                >
+                                  {banner.offerPrice
+                                    ? formatUsd(banner.offerPrice)
+                                    : "No offer"}
+                                </Text>
+                              </View>
+                            </View>
+                          ) : null}
 
                           <View style={styles.bannerMetaRow}>
                             <View style={styles.metaItem}>
@@ -1819,6 +2024,28 @@ const styles = StyleSheet.create({
     color: COLORS.text,
   },
 
+  previewLongDescription: {
+    marginTop: 8,
+    fontSize: 11,
+    lineHeight: 17,
+    color: COLORS.heading,
+    fontWeight: "600",
+  },
+
+  previewLongText: {
+    marginTop: 8,
+    fontSize: 11,
+    lineHeight: 17,
+    color: COLORS.text,
+  },
+
+  previewBenefits: {
+    marginTop: 8,
+    fontSize: 10,
+    lineHeight: 16,
+    color: COLORS.muted,
+  },
+
   previewBottomRow: {
     marginTop: 12,
     flexDirection: "row",
@@ -1845,6 +2072,53 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "700",
     color: COLORS.primary,
+  },
+
+  previewPriceRow: {
+    flexDirection: "row",
+    gap: 6,
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+  },
+
+  previewPriceBadge: {
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: COLORS.primaryLight,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+
+  previewPriceText: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: COLORS.primary,
+  },
+
+  priceBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 5,
+    borderRadius: 12,
+    backgroundColor: COLORS.primaryLight,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+
+  priceBadgeText: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: COLORS.primary,
+  },
+
+  offerBadge: {
+    backgroundColor: COLORS.redLight,
+  },
+
+  offerText: {
+    color: COLORS.red,
   },
 
   previewOrder: {
@@ -2007,6 +2281,14 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontSize: 10,
     color: COLORS.text,
+  },
+
+  bannerPriceRow: {
+    marginTop: 7,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 6,
   },
 
   statusBadge: {

@@ -1,5 +1,12 @@
 import React, { useEffect, useMemo } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from "react-native";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  useWindowDimensions,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { EditorContent, useEditor } from "@tiptap/react";
 import * as StarterKitModule from "@tiptap/starter-kit";
@@ -20,12 +27,16 @@ const Underline =
 const Link = LinkModule.Link || LinkModule.default || LinkModule;
 const Image = ImageModule.Image || ImageModule.default || ImageModule;
 const Placeholder =
-  PlaceholderModule.Placeholder || PlaceholderModule.default || PlaceholderModule;
+  PlaceholderModule.Placeholder ||
+  PlaceholderModule.default ||
+  PlaceholderModule;
 const Table = TableModule.Table || TableModule.default || TableModule;
 const TableRow =
   TableRowModule.TableRow || TableRowModule.default || TableRowModule;
 const TableHeader =
-  TableHeaderModule.TableHeader || TableHeaderModule.default || TableHeaderModule;
+  TableHeaderModule.TableHeader ||
+  TableHeaderModule.default ||
+  TableHeaderModule;
 const TableCell =
   TableCellModule.TableCell || TableCellModule.default || TableCellModule;
 
@@ -48,15 +59,17 @@ function ToolbarButton({ active, icon, label, onPress }) {
 }
 
 export default function BlogEditor({ value, onChange }) {
-  const editorExtensions = useMemo(() => {
-    const missingExtensions =
-      !StarterKit?.configure ||
-      !Underline ||
-      !Link?.configure ||
-      !Image?.configure ||
-      !Placeholder?.configure ||
-      !Table?.configure;
+  const { width } = useWindowDimensions();
+  const isCompact = width < 560;
+  const missingExtensions =
+    !StarterKit?.configure ||
+    !Underline ||
+    !Link?.configure ||
+    !Image?.configure ||
+    !Placeholder?.configure ||
+    !Table?.configure;
 
+  const editorExtensions = useMemo(() => {
     if (missingExtensions) {
       return [];
     }
@@ -87,13 +100,26 @@ export default function BlogEditor({ value, onChange }) {
       TableHeader,
       TableCell,
     ];
-  }, []);
+  }, [missingExtensions]);
 
   const editor = useEditor({
     extensions: editorExtensions,
     content: value || "<p></p>",
     autofocus: false,
     immediatelyRender: false,
+    editorProps: {
+      attributes: {
+        class: "blog-editor-content",
+        style: [
+          "min-height: 240px",
+          "color: #FFFFFF",
+          "caret-color: #FFFFFF",
+          "outline: none",
+          "font-size: 13px",
+          "line-height: 1.6",
+        ].join("; "),
+      },
+    },
     onUpdate: ({ editor: nextEditor }) => {
       onChange(nextEditor.getHTML());
     },
@@ -110,7 +136,10 @@ export default function BlogEditor({ value, onChange }) {
     }
   }, [value, editor]);
 
-  const linkState = useMemo(() => editor?.isActive("link"), [editor, editor?.state]);
+  const linkState = useMemo(
+    () => editor?.isActive("link"),
+    [editor, editor?.state]
+  );
 
   const insertLink = () => {
     if (!editor) return;
@@ -147,7 +176,11 @@ export default function BlogEditor({ value, onChange }) {
 
   const insertTable = () => {
     if (!editor) return;
-    editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
+    editor
+      .chain()
+      .focus()
+      .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
+      .run();
   };
 
   if (!editor) {
@@ -164,25 +197,39 @@ export default function BlogEditor({ value, onChange }) {
 
   return (
     <View style={styles.wrapper}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.toolbarScroll}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.toolbarScroll}
+        contentContainerStyle={[
+          styles.toolbarContent,
+          isCompact && styles.toolbarContentCompact,
+        ]}
+      >
         <View style={styles.toolbar}>
           <ToolbarButton
             icon="text-outline"
             label="H1"
             active={editor.isActive("heading", { level: 1 })}
-            onPress={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+            onPress={() =>
+              editor.chain().focus().toggleHeading({ level: 1 }).run()
+            }
           />
           <ToolbarButton
             icon="text-outline"
             label="H2"
             active={editor.isActive("heading", { level: 2 })}
-            onPress={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+            onPress={() =>
+              editor.chain().focus().toggleHeading({ level: 2 }).run()
+            }
           />
           <ToolbarButton
             icon="text-outline"
             label="H3"
             active={editor.isActive("heading", { level: 3 })}
-            onPress={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
+            onPress={() =>
+              editor.chain().focus().toggleHeading({ level: 3 }).run()
+            }
           />
           <ToolbarButton
             icon="caret-up-outline"
@@ -265,13 +312,19 @@ const styles = StyleSheet.create({
   toolbarScroll: {
     flexGrow: 0,
   },
+  toolbarContent: {
+    paddingBottom: 2,
+  },
+  toolbarContentCompact: {
+    paddingRight: 2,
+  },
   toolbar: {
     flexDirection: "row",
     gap: 8,
   },
   toolBtn: {
     minHeight: 38,
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     borderRadius: 12,
     backgroundColor: BLOG_COLORS.panel,
     borderWidth: 1,
@@ -298,7 +351,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BLOG_COLORS.border,
     backgroundColor: BLOG_COLORS.background,
-    padding: 14,
+    padding: 12,
     ...blogShadow,
   },
   loading: {

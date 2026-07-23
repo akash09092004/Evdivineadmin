@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Platform,
+  useWindowDimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { BLOG_COLORS, blogShadow } from "./blogTheme";
@@ -21,6 +22,8 @@ export default function BlogImageUploader({
   label = "Featured Image",
   showAltText = true,
 }) {
+  const { width } = useWindowDimensions();
+  const isCompact = width < 560;
   const [preview, setPreview] = useState(value || "");
 
   useEffect(() => {
@@ -59,7 +62,7 @@ export default function BlogImageUploader({
   return (
     <View style={styles.block}>
       <Text style={styles.label}>{label}</Text>
-      <View style={styles.panel}>
+      <View style={[styles.panel, isCompact && styles.panelCompact]}>
         <TouchableOpacity style={styles.uploadBtn} onPress={openPicker}>
           <Ionicons
             name="cloud-upload-outline"
@@ -73,7 +76,10 @@ export default function BlogImageUploader({
           <View style={styles.previewWrap}>
             <AdminImage
               uri={preview || value || ""}
-              style={styles.previewImage}
+              style={[
+                styles.previewImage,
+                isCompact && styles.previewImageCompact,
+              ]}
               placeholderLabel="No image selected yet"
             />
             <View style={styles.previewMeta}>
@@ -91,7 +97,12 @@ export default function BlogImageUploader({
             </View>
           </View>
         ) : (
-          <View style={styles.emptyPreview}>
+          <View
+            style={[
+              styles.emptyPreview,
+              isCompact && styles.emptyPreviewCompact,
+            ]}
+          >
             <Ionicons
               name="image-outline"
               size={24}
@@ -156,6 +167,9 @@ const styles = StyleSheet.create({
     gap: 12,
     ...blogShadow,
   },
+  panelCompact: {
+    padding: 12,
+  },
   uploadBtn: {
     minHeight: 44,
     borderRadius: 12,
@@ -183,6 +197,9 @@ const styles = StyleSheet.create({
     width: "100%",
     height: 220,
     backgroundColor: BLOG_COLORS.panelSoft,
+  },
+  previewImageCompact: {
+    height: 170,
   },
   previewMeta: {
     padding: 12,
@@ -217,6 +234,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
+  },
+  emptyPreviewCompact: {
+    minHeight: 140,
   },
   emptyText: {
     color: BLOG_COLORS.muted,

@@ -5,7 +5,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  ScrollView,
+  useWindowDimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
@@ -22,6 +22,8 @@ import { normalizeCategoryRecord } from "../../components/blogs/blogUtils";
 
 export default function BlogCreate() {
   const navigation = useNavigation();
+  const { width } = useWindowDimensions();
+  const isCompact = width < 640;
   const { toast, showToast, hideToast } = useBlogToast();
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -127,19 +129,16 @@ export default function BlogCreate() {
   };
 
   return (
-    <ScrollView
-      showsVerticalScrollIndicator={false}
-      contentContainerStyle={styles.page}
-    >
-      <View style={styles.headerCard}>
-        <View>
+    <View style={[styles.page, isCompact && styles.pageCompact]}>
+      <View style={[styles.headerCard, isCompact && styles.headerCardStack]}>
+        <View style={styles.headerTextWrap}>
           <Text style={styles.title}>Add New Blog</Text>
           <Text style={styles.subtitle}>
             Naya blog create karo aur turant preview bhi dekho.
           </Text>
         </View>
         <TouchableOpacity
-          style={styles.backBtn}
+          style={[styles.backBtn, isCompact && styles.backBtnStack]}
           onPress={() => navigation.navigate("AdminBlogs")}
         >
           <Ionicons
@@ -170,27 +169,34 @@ export default function BlogCreate() {
         </View>
       ) : null}
 
-      {loading ? (
-        <BlogSkeleton />
-      ) : (
-        <BlogForm
-          mode="create"
-          categories={categories}
-          savingAction={savingAction}
-          uploadProgress={uploadProgress}
-          onSubmit={handleSubmit}
-          onPreview={handlePreview}
-          onCancel={() => navigation.navigate("AdminBlogs")}
-        />
-      )}
-    </ScrollView>
+      <View style={styles.formArea}>
+        {loading ? (
+          <BlogSkeleton />
+        ) : (
+          <BlogForm
+            mode="create"
+            categories={categories}
+            savingAction={savingAction}
+            uploadProgress={uploadProgress}
+            onSubmit={handleSubmit}
+            onPreview={handlePreview}
+            onCancel={() => navigation.navigate("AdminBlogs")}
+          />
+        )}
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   page: {
+    flex: 1,
     gap: 14,
+    paddingHorizontal: 2,
     paddingBottom: 24,
+  },
+  pageCompact: {
+    paddingHorizontal: 0,
   },
   headerCard: {
     minHeight: 72,
@@ -206,6 +212,18 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 14,
     ...blogShadow,
+  },
+  headerCardStack: {
+    flexDirection: "column",
+    alignItems: "flex-start",
+  },
+  headerTextWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  formArea: {
+    flex: 1,
+    minHeight: 0,
   },
   title: {
     color: BLOG_COLORS.text,
@@ -225,6 +243,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+  },
+  backBtnStack: {
+    width: "100%",
+    justifyContent: "center",
   },
   backText: {
     color: BLOG_COLORS.background,

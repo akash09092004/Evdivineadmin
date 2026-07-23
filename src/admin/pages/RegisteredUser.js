@@ -39,6 +39,7 @@ export default function RegisteredUser() {
     { title: "Email", key: "email", width: 230 },
     { title: "Phone", key: "phone", width: 150 },
     { title: "Address", key: "address", width: 220 },
+    { title: "Password", key: "password", width: 180 },
     { title: "Verify", key: "verificationStatus", width: 120 },
     { title: "Account", key: "accountStatus", width: 120 },
     { title: "Wallet", key: "walletBalance", width: 110 },
@@ -62,7 +63,9 @@ export default function RegisteredUser() {
       );
     } catch (err) {
       setError(
-        err?.response?.data?.message || err?.message || "Users data load nahi ho paya."
+        err?.response?.data?.message ||
+          err?.message ||
+          "Users data load nahi ho paya."
       );
       setUsers([]);
     } finally {
@@ -82,7 +85,8 @@ export default function RegisteredUser() {
       item.userId.toLowerCase().includes(search.toLowerCase()) ||
       item.email.toLowerCase().includes(search.toLowerCase()) ||
       item.phone.includes(search) ||
-      item.address.toLowerCase().includes(search.toLowerCase())
+      item.address.toLowerCase().includes(search.toLowerCase()) ||
+      item.password.toLowerCase().includes(search.toLowerCase())
   );
 
   const updateLocalUser = (userId, updater) => {
@@ -206,16 +210,23 @@ export default function RegisteredUser() {
     return (
       <View style={styles.actionsWrap}>
         <TouchableOpacity
-          style={[styles.actionBtn, user.isActive ? styles.warnBtn : styles.successBtn]}
+          style={[
+            styles.actionBtn,
+            user.isActive ? styles.warnBtn : styles.successBtn,
+          ]}
           onPress={() => handleActiveToggle(user)}
           disabled={busy}
         >
           <Ionicons
-            name={user.isActive ? "pause-circle-outline" : "play-circle-outline"}
+            name={
+              user.isActive ? "pause-circle-outline" : "play-circle-outline"
+            }
             size={14}
             color="#fff"
           />
-          <Text style={styles.actionText}>{user.isActive ? "Inactive" : "Active"}</Text>
+          <Text style={styles.actionText}>
+            {user.isActive ? "Inactive" : "Active"}
+          </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -224,15 +235,22 @@ export default function RegisteredUser() {
           disabled={busy}
         >
           <Ionicons
-            name={user.isVerified ? "shield-outline" : "shield-checkmark-outline"}
+            name={
+              user.isVerified ? "shield-outline" : "shield-checkmark-outline"
+            }
             size={14}
             color="#fff"
           />
-          <Text style={styles.actionText}>{user.isVerified ? "Unverify" : "Verify"}</Text>
+          <Text style={styles.actionText}>
+            {user.isVerified ? "Unverify" : "Verify"}
+          </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.actionBtn, user.isBlocked ? styles.successBtn : styles.blockBtn]}
+          style={[
+            styles.actionBtn,
+            user.isBlocked ? styles.successBtn : styles.blockBtn,
+          ]}
           onPress={() => handleBlockToggle(user)}
           disabled={busy}
         >
@@ -241,7 +259,9 @@ export default function RegisteredUser() {
             size={14}
             color="#fff"
           />
-          <Text style={styles.actionText}>{user.isBlocked ? "Unblock" : "Block"}</Text>
+          <Text style={styles.actionText}>
+            {user.isBlocked ? "Unblock" : "Block"}
+          </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -281,7 +301,7 @@ export default function RegisteredUser() {
       <SearchBar
         value={search}
         onChangeText={setSearch}
-        placeholder="Search by ID, name, email, phone, address..."
+        placeholder="Search by ID, name, email, phone, address, password..."
       />
 
       <DataTable

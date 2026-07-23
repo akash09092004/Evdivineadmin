@@ -139,6 +139,10 @@ async function requestWithMethodsAndEndpoints(
   throw lastError;
 }
 
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
 export function normalizeAuthPayload(data) {
   if (!data || typeof data !== "object") {
     return {
@@ -166,48 +170,130 @@ export function normalizeAuthPayload(data) {
 }
 
 export function normalizeList(data, keys = []) {
-  if (Array.isArray(data)) {
-    return data;
+  const source = normalizeObject(data);
+
+  if (Array.isArray(source)) {
+    return source;
   }
 
-  if (!data || typeof data !== "object") {
+  if (!source || typeof source !== "object") {
     return [];
   }
 
   for (const key of keys) {
-    if (Array.isArray(data[key])) {
-      return data[key];
+    if (Array.isArray(source[key])) {
+      return source[key];
     }
   }
 
-  if (Array.isArray(data.items)) return data.items;
-  if (Array.isArray(data.data)) return data.data;
-  if (Array.isArray(data.results)) return data.results;
-  if (Array.isArray(data.list)) return data.list;
+  if (Array.isArray(source.items)) return source.items;
+  if (Array.isArray(source.data)) return source.data;
+  if (Array.isArray(source.results)) return source.results;
+  if (Array.isArray(source.list)) return source.list;
+
+  for (const value of Object.values(source)) {
+    if (Array.isArray(value)) {
+      return value;
+    }
+  }
 
   return [];
 }
 
 export function normalizeObject(data) {
-  if (data && typeof data === "object") {
+  let source = data;
+  let guard = 0;
+
+  while (
+    source &&
+    typeof source === "object" &&
+    !Array.isArray(source) &&
+    guard < 5
+  ) {
     if (
-      data.data &&
-      typeof data.data === "object" &&
-      !Array.isArray(data.data)
+      source.data &&
+      typeof source.data === "object" &&
+      !Array.isArray(source.data)
     ) {
-      return data.data;
+      source = source.data;
+      guard += 1;
+      continue;
     }
 
     if (
-      data.result &&
-      typeof data.result === "object" &&
-      !Array.isArray(data.result)
+      source.result &&
+      typeof source.result === "object" &&
+      !Array.isArray(source.result)
     ) {
-      return data.result;
+      source = source.result;
+      guard += 1;
+      continue;
+    }
+
+    break;
+  }
+
+  return source || {};
+}
+
+function isPageContentRecord(value) {
+  return (
+    isPlainObject(value) &&
+    (value.pageKey !== undefined ||
+      value.page !== undefined ||
+      value.title !== undefined ||
+      value.content !== undefined ||
+      value.description !== undefined ||
+      value.keywords !== undefined)
+  );
+}
+
+export function normalizePageContentRecord(data) {
+  const source = normalizeObject(data);
+  const candidates = [
+    source.pageContent,
+    source.item,
+    source.page,
+    source.data,
+    source.result,
+    source,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate) && candidate.length > 0) {
+      const firstItem = candidate[0];
+      if (isPageContentRecord(firstItem)) {
+        return firstItem;
+      }
+    }
+
+    if (isPageContentRecord(candidate)) {
+      return candidate;
     }
   }
 
-  return data || {};
+  return {};
+}
+
+export function normalizePageContentList(data) {
+  const source = normalizeObject(data);
+  const list = normalizeList(source, ["pages", "items", "pageContent"]);
+
+  if (list.length > 0) {
+    return list;
+  }
+
+  const record = normalizePageContentRecord(source);
+
+  if (Object.keys(record).length > 0) {
+    return [record];
+  }
+
+  if (Array.isArray(source)) {
+    return source;
+  }
+
+  return [];
 }
 
 export function normalizeDashboardStats(data) {
@@ -247,13 +333,7 @@ export async function adminGet(key, config = {}) {
 }
 
 export async function adminGetUserCredits(config = {}) {
-  const response = await API.request({
-    url: "/admin/user-credits",
-    method: "get",
-    ...config,
-  });
-
-  return response.data;
+  return runWithFallback("get", "userCredits", undefined, config);
 }
 
 export async function adminPost(key, payload, config = {}) {
@@ -262,6 +342,21 @@ export async function adminPost(key, payload, config = {}) {
 
 export async function adminPut(key, payload, config = {}) {
   return runWithFallback("put", key, payload, config);
+}
+
+export async function adminUpdateDropMessage(
+  dropMessageId,
+  payload,
+  config = {}
+) {
+  const safeId = String(dropMessageId || "").trim();
+
+  return requestWithMethodsAndEndpoints(
+    ["put", "patch", "post"],
+    [`/admin/drop-messages/${safeId}`, `/admin/messages/drop/${safeId}`],
+    payload,
+    config
+  );
 }
 
 export async function adminPatch(key, payload, config = {}) {
@@ -647,7 +742,11 @@ export async function adminSetUserStatus(userId, isActive, config = {}) {
     status: isActive ? "active" : "inactive",
   };
 
-  return requestAdminUserAction(`/admin/users/${userId}/status`, payload, config);
+  return requestAdminUserAction(
+    `/admin/users/${userId}/status`,
+    payload,
+    config
+  );
 }
 
 export async function adminSetUserVerification(
@@ -676,7 +775,11 @@ export async function adminSetUserBlock(userId, isBlocked, config = {}) {
     status: isBlocked ? "blocked" : "active",
   };
 
-  return requestAdminUserAction(`/admin/users/${userId}/block`, payload, config);
+  return requestAdminUserAction(
+    `/admin/users/${userId}/block`,
+    payload,
+    config
+  );
 }
 
 export async function adminDeleteUser(userId, config = {}) {
@@ -690,8 +793,44 @@ export async function adminDeleteUser(userId, config = {}) {
 }
 
 export async function adminAddUserCredit(payload, config = {}) {
+  const userId =
+    payload?.userId ||
+    payload?.user?.id ||
+    payload?.user?._id ||
+    payload?.customerId ||
+    payload?.ownerId ||
+    "";
+
+  const endpoints = ["/admin/user-credits", "/admin/users/credits"];
+
+  if (userId) {
+    endpoints.unshift(
+      `/admin/users/${userId}/credits`,
+      `/admin/users/${userId}/credit`,
+      `/admin/users/${userId}/wallet/credit`,
+      `/admin/users/${userId}/wallet/add`
+    );
+  }
+
+  return requestWithMethodsAndEndpoints(
+    ["post", "patch", "put"],
+    endpoints,
+    payload,
+    config
+  );
+}
+
+export async function adminSendBulkEmail(payload, config = {}) {
+  const configuredEndpoint = getAdminBulkEmailEndpoint();
+
+  if (!configuredEndpoint) {
+    throw new Error(
+      "Bulk email endpoint missing. Set EXPO_PUBLIC_ADMIN_BULK_EMAIL_ENDPOINT in .env."
+    );
+  }
+
   const response = await API.request({
-    url: "/admin/user-credits",
+    url: configuredEndpoint,
     method: "post",
     data: payload,
     ...config,
@@ -700,26 +839,12 @@ export async function adminAddUserCredit(payload, config = {}) {
   return response.data;
 }
 
-export async function adminSendBulkEmail(payload, config = {}) {
-  const endpoint =
+export function getAdminBulkEmailEndpoint() {
+  return (
     process.env.EXPO_PUBLIC_ADMIN_BULK_EMAIL_ENDPOINT ||
     process.env.EXPO_PUBLIC_ADMIN_NEWSLETTER_ENDPOINT ||
-    "";
-
-  if (!endpoint) {
-    throw new Error(
-      "Bulk email endpoint missing. Set EXPO_PUBLIC_ADMIN_BULK_EMAIL_ENDPOINT."
-    );
-  }
-
-  const response = await API.request({
-    url: endpoint,
-    method: "post",
-    data: payload,
-    ...config,
-  });
-
-  return response.data;
+    ""
+  );
 }
 
 export async function adminSaveBanner(payload, config = {}) {
@@ -787,7 +912,11 @@ export async function adminDeleteSlotPlan(slotPlanId, config = {}) {
   );
 }
 
-export async function adminSetSlotPlanStatus(slotPlanId, isActive, config = {}) {
+export async function adminSetSlotPlanStatus(
+  slotPlanId,
+  isActive,
+  config = {}
+) {
   const payload = {
     isActive,
     active: isActive,
@@ -823,6 +952,67 @@ export async function adminUpdateAvailability(id, payload, config = {}) {
       `/admin/availability/${id}/edit`,
     ],
     payload,
+    config
+  );
+}
+
+export async function adminGetPageContent(config = {}) {
+  return runWithFallback("get", "pageContent", undefined, config);
+}
+
+export async function adminGetPageContentByKey(pageKey, config = {}) {
+  const safePageKey = String(pageKey || "").trim();
+
+  return requestWithMethodsAndEndpoints(
+    ["get"],
+    [
+      `/admin/page-content/${safePageKey}`,
+      `/admin/content/pages/${safePageKey}`,
+    ],
+    undefined,
+    config
+  );
+}
+
+export async function adminPutPageContent(pageKey, payload, config = {}) {
+  const safePageKey = String(pageKey || "").trim();
+  const nextPayload = {
+    ...payload,
+    pageKey: payload?.pageKey || safePageKey,
+    page: payload?.page || safePageKey,
+  };
+
+  return requestWithMethodsAndEndpoints(
+    ["put"],
+    [
+      `/admin/page-content/${safePageKey}`,
+      `/admin/content/pages/${safePageKey}`,
+    ],
+    nextPayload,
+    config
+  );
+}
+
+export async function adminSavePageContent(pageKey, payload, config = {}) {
+  try {
+    return await adminPutPageContent(pageKey, payload, config);
+  } catch (error) {
+    if (error?.response?.status !== 404 && error?.response?.status !== 405) {
+      throw error;
+    }
+  }
+
+  const safePageKey = String(pageKey || "").trim();
+  const nextPayload = {
+    ...payload,
+    pageKey: payload?.pageKey || safePageKey,
+    page: payload?.page || safePageKey,
+  };
+
+  return requestWithMethodsAndEndpoints(
+    ["post"],
+    ["/admin/page-content", "/admin/content/pages"],
+    nextPayload,
     config
   );
 }
@@ -874,7 +1064,11 @@ export async function adminSetBannerActive(bannerId, isActive, config = {}) {
   }
 }
 
-export async function adminSetBlogCategoryActive(categoryId, isActive, config = {}) {
+export async function adminSetBlogCategoryActive(
+  categoryId,
+  isActive,
+  config = {}
+) {
   const response = await API.request({
     url: `/admin/blog-categories/${categoryId}/status`,
     method: "patch",

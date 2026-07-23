@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  useWindowDimensions,
   Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -23,28 +24,31 @@ import {
   normalizeList,
 } from "../utils/adminApi";
 
-const EMPTY_FORM = {
-  name: "",
-  slug: "",
-  element: "",
-  description: "",
-  imageUrl: "",
-  sortOrder: 1,
-  isActive: true,
-};
-
 const COLORS = {
-  bg: "#06040F",
   card: "#151B2E",
   cardSoft: "#0E0826",
   input: "#0B1020",
   border: "#242B45",
-  text: "#F5EAFF",
   muted: "#A7B0D1",
   primary: "#8B5CF6",
   success: "#16A34A",
   warning: "#F59E0B",
   danger: "#DC2626",
+  chip: "#211B3A",
+};
+
+const EMPTY_FORM = {
+  name: "",
+  slug: "",
+  element: "",
+  shortDescription: "",
+  longContent: "",
+  benefits: "",
+  consultationPrice: "",
+  offerPrice: "",
+  sortOrder: "1",
+  isActive: true,
+  imageUrl: "",
 };
 
 function slugify(value) {
@@ -55,24 +59,29 @@ function slugify(value) {
     .replace(/^-+|-+$/g, "");
 }
 
-function normalizeRashi(item, index = 0) {
-  return {
-    id: item?._id || item?.id || `rashi-${index + 1}`,
-    name: item?.name || "Untitled Rashi",
-    slug: item?.slug || "",
-    element: item?.element || "",
-    description: item?.description || "",
-    imageUrl: resolveAssetUrl(item?.imageUrl || item?.image || ""),
-    sortOrder: Number(item?.sortOrder ?? index + 1),
-    isActive: item?.isActive ?? item?.active ?? true,
-    updatedAt: item?.updatedAt || "",
-  };
-}
-
 function formatDate(value) {
   if (!value) return "N/A";
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "N/A" : date.toLocaleString();
+  if (Number.isNaN(date.getTime())) return "N/A";
+  return date.toLocaleString();
+}
+
+function normalizeBenefits(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item || "").trim()).filter(Boolean);
+  }
+
+  const text = String(value || "").trim();
+  if (!text) return [];
+
+  return text
+    .split(/,|\n/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function benefitsToText(value) {
+  return normalizeBenefits(value).join(", ");
 }
 
 function fileNameFromUrl(value) {
@@ -86,12 +95,70 @@ function fileNameFromUrl(value) {
   }
 }
 
-function buildFormData(form, imageFile) {
+function formatPrice(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "N/A";
+  return `$${number.toLocaleString("en-US")}`;
+}
+
+function formatUsdValue(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) {
+    return "";
+  }
+
+  return `$${number.toLocaleString("en-US")}`;
+}
+
+function normalizeRashi(item, index = 0) {
+  const imageUrl = resolveAssetUrl(item?.imageUrl || item?.image || "");
+  const sortOrder = Number(item?.sortOrder ?? index + 1) || index + 1;
+  const consultationPrice = Number(item?.consultationPrice ?? item?.price ?? 0);
+  const offerPrice = Number(
+    item?.offerPrice ??
+      item?.offer ??
+      item?.discountPrice ??
+      item?.salePrice ??
+      item?.consultationOfferPrice ??
+      0
+  );
+  const benefitsValue =
+    item?.benefits ?? item?.benefit ?? item?.highlights ?? "";
+
+  return {
+    id: item?._id || item?.id || `rashi-${index + 1}`,
+    name: item?.name || "Untitled Rashi",
+    slug: item?.slug || "",
+    element: item?.element || "",
+    shortDescription:
+      item?.shortDescription || item?.description || item?.summary || "",
+    longContent: item?.longContent || item?.content || "",
+    benefits: benefitsToText(benefitsValue),
+    consultationPrice: Number.isFinite(consultationPrice)
+      ? consultationPrice
+      : "",
+    offerPrice: Number.isFinite(offerPrice) ? offerPrice : "",
+    sortOrder,
+    isActive: item?.isActive ?? item?.active ?? true,
+    imageUrl,
+    updatedAt: item?.updatedAt || item?.modifiedAt || item?.createdAt || "",
+  };
+}
+
+function buildRashiFormData(form, imageFile, removeImage) {
   const payload = new FormData();
+
   payload.append("name", form.name.trim());
   payload.append("slug", form.slug.trim() || slugify(form.name));
   payload.append("element", form.element.trim());
-  payload.append("description", form.description.trim());
+  payload.append("shortDescription", form.shortDescription.trim());
+  payload.append("longContent", form.longContent.trim());
+  payload.append("benefits", form.benefits.trim());
+  payload.append(
+    "consultationPrice",
+    String(Number(form.consultationPrice) || 0)
+  );
+  payload.append("offerPrice", String(Number(form.offerPrice) || 0));
   payload.append("sortOrder", String(Number(form.sortOrder) || 1));
   payload.append("isActive", String(Boolean(form.isActive)));
 
@@ -99,20 +166,80 @@ function buildFormData(form, imageFile) {
     payload.append("image", imageFile);
   }
 
+  if (removeImage) {
+    payload.append("removeImage", "true");
+  }
+
   return payload;
 }
 
-function RemoteImage({ uri, style, placeholderLabel }) {
+function StatCard({ label, value, icon, tone }) {
+  return (
+    <View style={styles.statCard}>
+      <View style={[styles.statIcon, tone && { backgroundColor: tone }]}>
+        <Ionicons name={icon} size={18} color="#fff" />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.statValue}>{value}</Text>
+        <Text style={styles.statLabel}>{label}</Text>
+      </View>
+    </View>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  multiline,
+  keyboardType,
+}) {
+  return (
+    <View style={styles.fieldGroup}>
+      <Text style={styles.label}>{label}</Text>
+      <TextInput
+        style={[styles.input, multiline && styles.textArea]}
+        value={String(value ?? "")}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor="#8B7AA8"
+        multiline={multiline}
+        keyboardType={keyboardType}
+        textAlignVertical={multiline ? "top" : "center"}
+      />
+    </View>
+  );
+}
+
+function Badge({ label, active, tone = "green" }) {
+  const badgeStyle =
+    tone === "green"
+      ? active
+        ? styles.greenBadge
+        : styles.grayBadge
+      : tone === "orange"
+      ? styles.orangeBadge
+      : styles.grayBadge;
+
+  return (
+    <View style={[styles.badge, badgeStyle]}>
+      <Text style={styles.badgeText}>{label}</Text>
+    </View>
+  );
+}
+
+function RashiImage({ uri, style, placeholder }) {
   return (
     <AdminImage
       uri={uri}
       style={style}
       resizeMode="cover"
-      placeholderLabel={placeholderLabel}
+      placeholderLabel={placeholder}
       renderFallback={() => (
         <View style={[style, styles.imagePlaceholder]}>
           <Ionicons name="image-outline" size={20} color={COLORS.muted} />
-          <Text style={styles.placeholderText}>{placeholderLabel}</Text>
+          <Text style={styles.placeholderText}>{placeholder}</Text>
         </View>
       )}
     />
@@ -120,6 +247,10 @@ function RemoteImage({ uri, style, placeholderLabel }) {
 }
 
 export default function Rashis() {
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 980;
+  const isTablet = width >= 720;
+
   const [search, setSearch] = useState("");
   const [rashis, setRashis] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -129,6 +260,7 @@ export default function Rashis() {
   const [selectedRashiId, setSelectedRashiId] = useState("");
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState("");
+  const [removeImage, setRemoveImage] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
 
   const loadRashis = async () => {
@@ -138,7 +270,15 @@ export default function Rashis() {
     try {
       const data = await adminGet("rashis");
       const list = normalizeList(data, ["rashis", "data", "results", "items"]);
-      setRashis(list.map((item, index) => normalizeRashi(item, index)));
+
+      const next = list
+        .map((item, index) => normalizeRashi(item, index))
+        .sort((a, b) => {
+          if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+          return a.name.localeCompare(b.name);
+        });
+
+      setRashis(next);
     } catch (err) {
       setRashis([]);
       setError(
@@ -172,8 +312,11 @@ export default function Rashis() {
         item.name,
         item.slug,
         item.element,
-        item.description,
+        item.shortDescription,
+        item.longContent,
+        item.benefits,
         String(item.sortOrder),
+        String(item.consultationPrice),
       ]
         .join(" ")
         .toLowerCase()
@@ -183,18 +326,18 @@ export default function Rashis() {
 
   const activeCount = rashis.filter((item) => item.isActive).length;
   const inactiveCount = rashis.length - activeCount;
+  const currentImageUri =
+    imagePreview || (removeImage ? "" : form.imageUrl || "");
 
-  const clearPreview = () => {
+  const resetForm = () => {
     if (Platform.OS === "web" && imagePreview.startsWith("blob:")) {
       URL.revokeObjectURL(imagePreview);
     }
-  };
 
-  const resetForm = () => {
-    clearPreview();
     setSelectedRashiId("");
     setImageFile(null);
     setImagePreview("");
+    setRemoveImage(false);
     setForm(EMPTY_FORM);
   };
 
@@ -220,35 +363,72 @@ export default function Rashis() {
         return;
       }
 
-      clearPreview();
+      if (Platform.OS === "web" && imagePreview.startsWith("blob:")) {
+        URL.revokeObjectURL(imagePreview);
+      }
+
       const blobUrl = URL.createObjectURL(file);
       setImageFile(file);
       setImagePreview(blobUrl);
-      setForm((prev) => ({ ...prev, imageUrl: "" }));
+      setRemoveImage(false);
     };
 
     input.click();
   };
 
   const selectRashi = (rashi) => {
-    clearPreview();
+    if (Platform.OS === "web" && imagePreview.startsWith("blob:")) {
+      URL.revokeObjectURL(imagePreview);
+    }
+
     setSelectedRashiId(rashi.id);
     setImageFile(null);
     setImagePreview("");
+    setRemoveImage(false);
     setForm({
       name: rashi.name || "",
       slug: rashi.slug || "",
       element: rashi.element || "",
-      description: rashi.description || "",
-      imageUrl: rashi.imageUrl || "",
-      sortOrder: Number(rashi.sortOrder || 1),
+      shortDescription: rashi.shortDescription || "",
+      longContent: rashi.longContent || "",
+      benefits: rashi.benefits || "",
+      consultationPrice:
+        rashi.consultationPrice !== "" && rashi.consultationPrice !== null
+          ? String(rashi.consultationPrice)
+          : "",
+      offerPrice:
+        rashi.offerPrice !== "" && rashi.offerPrice !== null
+          ? String(rashi.offerPrice)
+          : "",
+      sortOrder: String(rashi.sortOrder || 1),
       isActive: Boolean(rashi.isActive),
+      imageUrl: rashi.imageUrl || "",
     });
   };
 
   const validateForm = () => {
     if (!form.name.trim()) {
       Alert.alert("Required", "Rashi name required hai.");
+      return false;
+    }
+
+    if (!form.element.trim()) {
+      Alert.alert("Required", "Element required hai.");
+      return false;
+    }
+
+    if (!form.shortDescription.trim()) {
+      Alert.alert("Required", "Short description fill karo.");
+      return false;
+    }
+
+    if (!form.longContent.trim()) {
+      Alert.alert("Required", "Long content fill karo.");
+      return false;
+    }
+
+    if (!String(form.consultationPrice).trim()) {
+      Alert.alert("Required", "Consultation price fill karo.");
       return false;
     }
 
@@ -271,15 +451,16 @@ export default function Rashis() {
         name: form.name.trim(),
         slug: form.slug.trim() || slugify(form.name),
         element: form.element.trim(),
-        description: form.description.trim(),
-        imageUrl: form.imageUrl.trim(),
+        shortDescription: form.shortDescription.trim(),
+        longContent: form.longContent.trim(),
+        benefits: form.benefits.trim(),
+        consultationPrice: Number(form.consultationPrice) || 0,
+        offerPrice: Number(form.offerPrice) || 0,
         sortOrder: Number(form.sortOrder) || 1,
         isActive: Boolean(form.isActive),
       };
 
-      const payload = imageFile
-        ? buildFormData(cleanedForm, imageFile)
-        : cleanedForm;
+      const payload = buildRashiFormData(cleanedForm, imageFile, removeImage);
 
       if (selectedRashiId) {
         await adminPutRashi(selectedRashiId, payload);
@@ -321,6 +502,7 @@ export default function Rashis() {
           item.id === rashi.id ? { ...item, isActive: rashi.isActive } : item
         )
       );
+
       Alert.alert(
         "Error",
         err?.response?.data?.message ||
@@ -346,6 +528,7 @@ export default function Rashis() {
 
     try {
       await adminDeleteRashi(rashi.id);
+
       if (selectedRashiId === rashi.id) {
         resetForm();
       }
@@ -362,8 +545,7 @@ export default function Rashis() {
     }
   };
 
-  const previewSource = imagePreview || form.imageUrl || "";
-  const previewUri = previewSource ? resolveAssetUrl(previewSource) : "";
+  const previewUri = currentImageUri ? resolveAssetUrl(currentImageUri) : "";
 
   return (
     <ScrollView
@@ -374,9 +556,11 @@ export default function Rashis() {
         <View style={{ flex: 1 }}>
           <Text style={styles.heroTitle}>Rashi Management</Text>
           <Text style={styles.heroSub}>
-            Rashi create, edit aur active/inactive control karo.
+            Create, edit, image upload, remove image aur active/inactive
+            control.
           </Text>
         </View>
+
         <View style={styles.heroBadge}>
           <Ionicons name="sparkles-outline" size={16} color="#fff" />
           <Text style={styles.heroBadgeText}>{rashis.length} Rashis</Text>
@@ -384,18 +568,24 @@ export default function Rashis() {
       </View>
 
       <View style={styles.statsRow}>
-        <View style={styles.statCard}>
-          <Text style={styles.statValue}>{rashis.length}</Text>
-          <Text style={styles.statLabel}>Total</Text>
-        </View>
-        <View style={styles.statCard}>
-          <Text style={styles.statValue}>{activeCount}</Text>
-          <Text style={styles.statLabel}>Active</Text>
-        </View>
-        <View style={styles.statCard}>
-          <Text style={styles.statValue}>{inactiveCount}</Text>
-          <Text style={styles.statLabel}>Inactive</Text>
-        </View>
+        <StatCard
+          label="Total"
+          value={rashis.length}
+          icon="layers-outline"
+          tone="#7C3AED"
+        />
+        <StatCard
+          label="Active"
+          value={activeCount}
+          icon="checkmark-circle-outline"
+          tone="#16A34A"
+        />
+        <StatCard
+          label="Inactive"
+          value={inactiveCount}
+          icon="remove-circle-outline"
+          tone="#F59E0B"
+        />
       </View>
 
       {loading ? (
@@ -412,28 +602,27 @@ export default function Rashis() {
         </View>
       ) : null}
 
-      <View style={styles.layout}>
-        <View style={styles.formCard}>
+      <View style={[styles.layout, !isDesktop && styles.layoutStack]}>
+        <View style={[styles.formCard, !isDesktop && styles.fullWidth]}>
           <View style={styles.cardHeader}>
-            <View>
+            <View style={{ flex: 1 }}>
               <Text style={styles.cardTitle}>
                 {selectedRashiId ? "Edit Rashi" : "Create Rashi"}
               </Text>
               <Text style={styles.cardSubTitle}>
-                Name, slug, element aur image fill karo
+                Name, slug, description, benefits aur image fill karo
               </Text>
             </View>
+
             <TouchableOpacity style={styles.resetBtn} onPress={resetForm}>
               <Ionicons name="refresh-outline" size={16} color="#fff" />
               <Text style={styles.resetText}>Reset</Text>
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.label}>Name</Text>
-          <TextInput
-            style={styles.input}
+          <Field
+            label="Name"
             placeholder="Aries"
-            placeholderTextColor="#8B7AA8"
             value={form.name}
             onChangeText={(text) => {
               const nextSlug = form.slug ? form.slug : slugify(text);
@@ -441,39 +630,91 @@ export default function Rashis() {
             }}
           />
 
-          <Text style={styles.label}>Slug</Text>
-          <TextInput
-            style={styles.input}
+          <Field
+            label="Slug"
             placeholder="aries"
-            placeholderTextColor="#8B7AA8"
             value={form.slug}
             onChangeText={(text) =>
               setForm((prev) => ({ ...prev, slug: text }))
             }
           />
 
-          <Text style={styles.label}>Element</Text>
-          <TextInput
-            style={styles.input}
+          <Field
+            label="Element"
             placeholder="Fire"
-            placeholderTextColor="#8B7AA8"
             value={form.element}
             onChangeText={(text) =>
               setForm((prev) => ({ ...prev, element: text }))
             }
           />
 
-          <Text style={styles.label}>Description</Text>
-          <TextInput
-            style={[styles.input, styles.textArea]}
-            placeholder="Bold and energetic..."
-            placeholderTextColor="#8B7AA8"
-            multiline
-            value={form.description}
+          <Field
+            label="Short Description"
+            placeholder="Bold and energetic rashi..."
+            value={form.shortDescription}
             onChangeText={(text) =>
-              setForm((prev) => ({ ...prev, description: text }))
+              setForm((prev) => ({ ...prev, shortDescription: text }))
             }
+            multiline
           />
+
+          <Field
+            label="Long Content"
+            placeholder="Aries ke bare me full detail..."
+            value={form.longContent}
+            onChangeText={(text) =>
+              setForm((prev) => ({ ...prev, longContent: text }))
+            }
+            multiline
+          />
+
+          <Field
+            label="Benefits"
+            placeholder="Leadership, confidence, fast action"
+            value={form.benefits}
+            onChangeText={(text) =>
+              setForm((prev) => ({ ...prev, benefits: text }))
+            }
+            multiline
+          />
+
+          <View style={[styles.formRow, !isTablet && styles.formRowStack]}>
+            <View style={styles.flex1}>
+              <Field
+                label="Consultation Price ($)"
+                placeholder="499"
+                value={form.consultationPrice}
+                onChangeText={(text) =>
+                  setForm((prev) => ({ ...prev, consultationPrice: text }))
+                }
+                keyboardType="numeric"
+              />
+            </View>
+
+            <View style={styles.flex1}>
+              <Field
+                label="Offer Price ($)"
+                placeholder="399"
+                value={form.offerPrice}
+                onChangeText={(text) =>
+                  setForm((prev) => ({ ...prev, offerPrice: text }))
+                }
+                keyboardType="numeric"
+              />
+            </View>
+
+            <View style={styles.flex1}>
+              <Field
+                label="Sort Order"
+                placeholder="1"
+                value={form.sortOrder}
+                onChangeText={(text) =>
+                  setForm((prev) => ({ ...prev, sortOrder: text }))
+                }
+                keyboardType="numeric"
+              />
+            </View>
+          </View>
 
           <Text style={styles.label}>Rashi Image</Text>
           <TouchableOpacity style={styles.uploadBtn} onPress={openImagePicker}>
@@ -485,46 +726,53 @@ export default function Rashis() {
             </Text>
           </TouchableOpacity>
 
-          <View style={styles.twoCol}>
-            <View style={styles.flex1}>
-              <Text style={styles.label}>Sort Order</Text>
-              <TextInput
-                style={styles.input}
-                keyboardType="numeric"
-                placeholder="1"
-                placeholderTextColor="#8B7AA8"
-                value={String(form.sortOrder)}
-                onChangeText={(text) =>
-                  setForm((prev) => ({ ...prev, sortOrder: text }))
-                }
-              />
+          <View style={styles.imageActionsRow}>
+            <View style={styles.imageMetaBox}>
+              <Text style={styles.imageMetaLabel}>Current image</Text>
+              <Text style={styles.imageMetaValue} numberOfLines={1}>
+                {removeImage
+                  ? "Will be removed on save"
+                  : fileNameFromUrl(currentImageUri)}
+              </Text>
             </View>
-            <View style={styles.flex1}>
-              <Text style={styles.label}>Status</Text>
-              <TouchableOpacity
-                style={[
-                  styles.toggleBtn,
-                  form.isActive ? styles.activeBtn : styles.inactiveBtn,
-                ]}
-                onPress={() =>
-                  setForm((prev) => ({ ...prev, isActive: !prev.isActive }))
-                }
-              >
-                <Ionicons
-                  name={
-                    form.isActive
-                      ? "checkmark-circle-outline"
-                      : "close-circle-outline"
-                  }
-                  size={18}
-                  color="#fff"
-                />
-                <Text style={styles.toggleText}>
-                  {form.isActive ? "Active" : "Inactive"}
-                </Text>
-              </TouchableOpacity>
-            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.removeImageBtn,
+                !selectedRashiId && !form.imageUrl && styles.disabledOutline,
+              ]}
+              onPress={() => setRemoveImage((prev) => !prev)}
+              disabled={!selectedRashiId && !form.imageUrl}
+            >
+              <Ionicons name="trash-outline" size={16} color="#fff" />
+              <Text style={styles.removeImageText}>
+                {removeImage ? "Keep Image" : "Remove Image"}
+              </Text>
+            </TouchableOpacity>
           </View>
+
+          <TouchableOpacity
+            style={[
+              styles.toggleBtn,
+              form.isActive ? styles.activeBtn : styles.inactiveBtn,
+            ]}
+            onPress={() =>
+              setForm((prev) => ({ ...prev, isActive: !prev.isActive }))
+            }
+          >
+            <Ionicons
+              name={
+                form.isActive
+                  ? "checkmark-circle-outline"
+                  : "close-circle-outline"
+              }
+              size={18}
+              color="#fff"
+            />
+            <Text style={styles.toggleText}>
+              {form.isActive ? "Active" : "Inactive"}
+            </Text>
+          </TouchableOpacity>
 
           <TouchableOpacity
             style={[styles.saveBtn, saving && styles.disabledBtn]}
@@ -544,29 +792,45 @@ export default function Rashis() {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.rightCol}>
+        <View style={[styles.rightCol, !isDesktop && styles.fullWidth]}>
           <View style={styles.previewCard}>
             <Text style={styles.cardTitle}>Live Preview</Text>
             <Text style={styles.cardSubTitle}>
               Jo image save hui hai wahi yahan dikhegi
             </Text>
 
-            <View style={styles.previewBox}>
-              <RemoteImage
+            <View
+              style={[styles.previewBox, !isTablet && styles.previewBoxStack]}
+            >
+              <RashiImage
                 uri={previewUri}
                 style={styles.previewImage}
-                placeholderLabel="Image preview"
+                placeholder="Image preview"
               />
 
               <View style={styles.previewBody}>
-                <Text style={styles.previewTitle}>{form.name || "Aries"}</Text>
+                <View style={styles.previewTopRow}>
+                  <Text style={styles.previewTitle}>
+                    {form.name || "Aries"}
+                  </Text>
+                  <Badge
+                    label={form.isActive ? "Active" : "Inactive"}
+                    active={form.isActive}
+                  />
+                </View>
+
                 <Text style={styles.previewSubtitle}>
-                  {form.slug || slugify(form.name) || "aries"} •{" "}
+                  {form.slug || slugify(form.name) || "aries"} -{" "}
                   {form.element || "Fire"}
                 </Text>
-                <Text style={styles.previewDescription}>
-                  {form.description ||
+
+                <Text style={styles.previewDescription} numberOfLines={4}>
+                  {form.shortDescription ||
                     "Bold and energetic description yahan show hoga."}
+                </Text>
+
+                <Text style={styles.previewLongText} numberOfLines={4}>
+                  {form.longContent || "Long content yahan show hoga."}
                 </Text>
 
                 <View style={styles.previewMetaRow}>
@@ -575,20 +839,52 @@ export default function Rashis() {
                       Order {form.sortOrder || 1}
                     </Text>
                   </View>
-                  <View
-                    style={[
-                      styles.chip,
-                      form.isActive ? styles.greenChip : styles.grayChip,
-                    ]}
-                  >
+
+                  <View style={[styles.chip, styles.priceChip]}>
+                    <Ionicons
+                      name="logo-usd"
+                      size={12}
+                      color="#fff"
+                      style={styles.chipIcon}
+                    />
                     <Text style={styles.chipText}>
-                      {form.isActive ? "Active" : "Inactive"}
+                      {form.consultationPrice
+                        ? formatUsdValue(form.consultationPrice)
+                        : "No Price"}
+                    </Text>
+                  </View>
+
+                  <View style={[styles.chip, styles.offerChip]}>
+                    <Ionicons
+                      name="logo-usd"
+                      size={12}
+                      color="#fff"
+                      style={styles.chipIcon}
+                    />
+                    <Text style={styles.chipText}>
+                      {form.offerPrice
+                        ? formatUsdValue(form.offerPrice)
+                        : "No Offer"}
                     </Text>
                   </View>
                 </View>
 
+                <View style={styles.benefitWrap}>
+                  {normalizeBenefits(form.benefits).length > 0 ? (
+                    normalizeBenefits(form.benefits).map((item) => (
+                      <View key={item} style={styles.benefitChip}>
+                        <Text style={styles.benefitText}>{item}</Text>
+                      </View>
+                    ))
+                  ) : (
+                    <Text style={styles.imageFileText}>
+                      Benefits yahan show honge.
+                    </Text>
+                  )}
+                </View>
+
                 <Text style={styles.imageFileText} numberOfLines={1}>
-                  Image: {fileNameFromUrl(previewSource)}
+                  Image: {fileNameFromUrl(currentImageUri)}
                 </Text>
               </View>
             </View>
@@ -596,12 +892,13 @@ export default function Rashis() {
 
           <View style={styles.listCard}>
             <View style={styles.listHeader}>
-              <View>
+              <View style={{ flex: 1 }}>
                 <Text style={styles.cardTitle}>Existing Rashis</Text>
                 <Text style={styles.cardSubTitle}>
-                  Select, update, status change or delete
+                  Select, update, active/inactive change aur delete karo
                 </Text>
               </View>
+
               <TouchableOpacity
                 style={styles.refreshBtn}
                 onPress={loadRashis}
@@ -629,7 +926,7 @@ export default function Rashis() {
                   <Text style={styles.emptyText}>No rashi found</Text>
                 </View>
               ) : (
-                filteredRashis.map((rashi) => {
+                filteredRashis.map((rashi, index) => {
                   const busy = actionId === rashi.id;
                   const imageUri = resolveAssetUrl(rashi.imageUrl);
 
@@ -645,10 +942,14 @@ export default function Rashis() {
                         style={styles.itemMain}
                         onPress={() => selectRashi(rashi)}
                       >
-                        <RemoteImage
+                        <View style={styles.indexBadge}>
+                          <Text style={styles.indexText}>{index + 1}</Text>
+                        </View>
+
+                        <RashiImage
                           uri={imageUri}
                           style={styles.thumb}
-                          placeholderLabel="No image"
+                          placeholder="No image"
                         />
 
                         <View style={styles.itemInfo}>
@@ -656,22 +957,14 @@ export default function Rashis() {
                             <Text numberOfLines={1} style={styles.itemTitle}>
                               {rashi.name}
                             </Text>
-                            <View
-                              style={[
-                                styles.statusBadge,
-                                rashi.isActive
-                                  ? styles.activeBadge
-                                  : styles.inactiveBadge,
-                              ]}
-                            >
-                              <Text style={styles.statusBadgeText}>
-                                {rashi.isActive ? "Active" : "Inactive"}
-                              </Text>
-                            </View>
+                            <Badge
+                              label={rashi.isActive ? "Active" : "Inactive"}
+                              active={rashi.isActive}
+                            />
                           </View>
 
                           <Text numberOfLines={1} style={styles.itemSubtitle}>
-                            {rashi.slug || "no-slug"} •{" "}
+                            {rashi.slug || "no-slug"} -{" "}
                             {rashi.element || "No element"}
                           </Text>
 
@@ -679,7 +972,8 @@ export default function Rashis() {
                             numberOfLines={2}
                             style={styles.itemDescription}
                           >
-                            {rashi.description || "No description added"}
+                            {rashi.shortDescription ||
+                              "No short description added"}
                           </Text>
 
                           <View style={styles.itemMetaRow}>
@@ -693,6 +987,33 @@ export default function Rashis() {
                                 Order {rashi.sortOrder}
                               </Text>
                             </View>
+
+                            <View style={styles.metaItem}>
+                              <Ionicons
+                                name="logo-usd"
+                                size={13}
+                                color={COLORS.muted}
+                              />
+                              <Text style={styles.metaText}>
+                                {rashi.consultationPrice
+                                  ? formatUsdValue(rashi.consultationPrice)
+                                  : "No price"}
+                              </Text>
+                            </View>
+
+                            <View style={styles.metaItem}>
+                              <Ionicons
+                                name="logo-usd"
+                                size={13}
+                                color={COLORS.muted}
+                              />
+                              <Text style={styles.metaText}>
+                                {rashi.offerPrice
+                                  ? formatUsdValue(rashi.offerPrice)
+                                  : "No offer"}
+                              </Text>
+                            </View>
+
                             <View style={styles.metaItem}>
                               <Ionicons
                                 name="calendar-outline"
@@ -838,7 +1159,18 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     paddingVertical: 12,
     paddingHorizontal: 13,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
     ...shadow,
+  },
+  statIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.primary,
   },
   statValue: {
     color: COLORS.primary,
@@ -872,6 +1204,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 14,
   },
+  layoutStack: {
+    flexDirection: "column",
+  },
   formCard: {
     width: "38%",
     backgroundColor: COLORS.card,
@@ -884,6 +1219,9 @@ const styles = StyleSheet.create({
   rightCol: {
     width: "62%",
     gap: 14,
+  },
+  fullWidth: {
+    width: "100%",
   },
   previewCard: {
     backgroundColor: COLORS.card,
@@ -933,18 +1271,14 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     fontSize: 12,
   },
+  fieldGroup: {
+    marginBottom: 12,
+  },
   label: {
     color: "#D8B4FE",
     fontSize: 12,
     fontWeight: "900",
     marginBottom: 7,
-    marginTop: 6,
-  },
-  helperText: {
-    color: COLORS.muted,
-    fontSize: 11,
-    marginBottom: 8,
-    marginTop: -4,
   },
   input: {
     minHeight: 46,
@@ -954,12 +1288,21 @@ const styles = StyleSheet.create({
     borderColor: "#2B3354",
     paddingHorizontal: 14,
     color: "#fff",
-    marginBottom: 12,
   },
   textArea: {
-    minHeight: 86,
+    minHeight: 92,
     textAlignVertical: "top",
     paddingTop: 12,
+  },
+  formRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  formRowStack: {
+    flexDirection: "column",
+  },
+  flex1: {
+    flex: 1,
   },
   uploadBtn: {
     minHeight: 44,
@@ -970,19 +1313,58 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
     paddingHorizontal: 14,
-    marginBottom: 12,
+    marginBottom: 10,
   },
   uploadText: {
     color: "#fff",
     fontWeight: "900",
     fontSize: 12,
+    flexShrink: 1,
   },
-  twoCol: {
+  imageActionsRow: {
     flexDirection: "row",
+    alignItems: "center",
     gap: 10,
+    marginBottom: 12,
   },
-  flex1: {
+  imageMetaBox: {
     flex: 1,
+    backgroundColor: COLORS.input,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#2B3354",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  imageMetaLabel: {
+    color: COLORS.muted,
+    fontSize: 10,
+    fontWeight: "800",
+    textTransform: "uppercase",
+  },
+  imageMetaValue: {
+    color: "#fff",
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  removeImageBtn: {
+    minHeight: 44,
+    borderRadius: 12,
+    backgroundColor: COLORS.danger,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+  },
+  removeImageText: {
+    color: "#fff",
+    fontWeight: "900",
+    fontSize: 12,
+  },
+  disabledOutline: {
+    opacity: 0.45,
   },
   toggleBtn: {
     minHeight: 44,
@@ -1026,18 +1408,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#2B3354",
     overflow: "hidden",
+    flexDirection: "column",
+  },
+  previewBoxStack: {
+    flexDirection: "column",
   },
   previewImage: {
     width: "100%",
-    height: 180,
+    height: 220,
     backgroundColor: "#111827",
   },
   imagePlaceholder: {
-    height: 180,
+    height: 220,
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
     padding: 14,
+    backgroundColor: "#111827",
   },
   placeholderText: {
     color: COLORS.muted,
@@ -1047,10 +1434,17 @@ const styles = StyleSheet.create({
   previewBody: {
     padding: 14,
   },
+  previewTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
   previewTitle: {
     color: "#fff",
     fontSize: 18,
     fontWeight: "900",
+    flex: 1,
   },
   previewSubtitle: {
     color: "#E9D5FF",
@@ -1064,6 +1458,12 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginTop: 8,
   },
+  previewLongText: {
+    color: "#B8C1E0",
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 8,
+  },
   previewMetaRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -1071,21 +1471,66 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   chip: {
-    backgroundColor: "#211B3A",
+    backgroundColor: COLORS.chip,
     borderRadius: 999,
     paddingVertical: 7,
     paddingHorizontal: 10,
   },
-  greenChip: {
-    backgroundColor: "#065F46",
+  priceChip: {
+    backgroundColor: "#312E81",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
   },
-  grayChip: {
-    backgroundColor: "#374151",
+  offerChip: {
+    backgroundColor: "#4C1D95",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  chipIcon: {
+    marginRight: 1,
   },
   chipText: {
     color: "#fff",
     fontSize: 11,
     fontWeight: "800",
+  },
+  badge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  greenBadge: {
+    backgroundColor: COLORS.success,
+  },
+  grayBadge: {
+    backgroundColor: "#374151",
+  },
+  orangeBadge: {
+    backgroundColor: COLORS.warning,
+  },
+  badgeText: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "900",
+  },
+  benefitWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 12,
+  },
+  benefitChip: {
+    backgroundColor: "#312E81",
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+  },
+  benefitText: {
+    color: "#fff",
+    fontSize: 11,
+    fontWeight: "700",
   },
   imageFileText: {
     marginTop: 8,
@@ -1095,6 +1540,9 @@ const styles = StyleSheet.create({
   listHeader: {
     marginBottom: 12,
     gap: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   refreshBtn: {
     minHeight: 38,
@@ -1140,6 +1588,19 @@ const styles = StyleSheet.create({
     gap: 12,
     alignItems: "center",
   },
+  indexBadge: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: COLORS.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  indexText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "900",
+  },
   thumb: {
     width: 84,
     height: 84,
@@ -1161,22 +1622,6 @@ const styles = StyleSheet.create({
     minWidth: 0,
     color: "#fff",
     fontSize: 14,
-    fontWeight: "900",
-  },
-  statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-  },
-  activeBadge: {
-    backgroundColor: COLORS.success,
-  },
-  inactiveBadge: {
-    backgroundColor: COLORS.warning,
-  },
-  statusBadgeText: {
-    color: "#fff",
-    fontSize: 10,
     fontWeight: "900",
   },
   itemSubtitle: {

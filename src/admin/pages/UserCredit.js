@@ -20,6 +20,7 @@ import {
   adminGetUserCredits,
   normalizeList,
 } from "../utils/adminApi";
+import { normalizeUserRecord } from "../utils/user";
 
 const shadow = {
   boxShadow: "0px 8px 24px rgba(0,0,0,0.12)",
@@ -56,9 +57,18 @@ function formatDate(value) {
 
 function formatAmountWithCurrency(amount, currencyCode, currencySymbol) {
   const numeric = Number(amount);
-  const baseAmount = Number.isFinite(numeric) ? numeric.toLocaleString("en-IN") : toText(amount, "N/A");
+  const baseAmount = Number.isFinite(numeric)
+    ? numeric.toLocaleString("en-IN")
+    : toText(amount, "N/A");
   const code = String(currencyCode || "").toUpperCase();
-  const symbol = currencySymbol && currencySymbol !== "N/A" ? currencySymbol : code === "INR" ? "₹" : code === "USD" ? "$" : "";
+  const symbol =
+    currencySymbol && currencySymbol !== "N/A"
+      ? currencySymbol
+      : code === "INR"
+      ? "₹"
+      : code === "USD"
+      ? "$"
+      : "";
 
   if (!baseAmount || baseAmount === "N/A") {
     return "N/A";
@@ -116,6 +126,88 @@ function pickFirst(...values) {
   return undefined;
 }
 
+function toNormalizedText(value) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  return String(value).trim();
+}
+
+function buildUserLookup(users = []) {
+  const lookup = new Map();
+
+  users.forEach((user) => {
+    const rawUser = user?.raw || {};
+    const rawKeys = [
+      user?.rawId,
+      user?.id,
+      user?.userId,
+      user?.raw?.user?._id,
+      user?.raw?.user?.id,
+      user?.name,
+      user?.fullName,
+      user?.userName,
+      user?.email,
+      user?.phone,
+      rawUser?.name,
+      rawUser?.fullName,
+      rawUser?.userName,
+      rawUser?.email,
+      rawUser?.phone,
+    ]
+      .map((value) => toNormalizedText(value))
+      .filter(Boolean);
+
+    rawKeys.forEach((key) => {
+      if (!lookup.has(key)) {
+        lookup.set(key, user);
+      }
+    });
+  });
+
+  return lookup;
+}
+
+function findUserForCredit(item, userLookup) {
+  const candidateKeys = [
+    item?.user?._id,
+    item?.user?.id,
+    item?.user?.email,
+    item?.user?.name,
+    item?.user?.fullName,
+    item?.user?.userName,
+    item?.userId,
+    item?.ownerId,
+    item?.customerId,
+    item?.owner,
+    item?.customer,
+    item?.email,
+    item?.userName,
+    item?.name,
+    item?.fullName,
+    typeof item?.user === "string" || typeof item?.user === "number"
+      ? item.user
+      : "",
+    typeof item?.owner === "string" || typeof item?.owner === "number"
+      ? item.owner
+      : "",
+    typeof item?.customer === "string" || typeof item?.customer === "number"
+      ? item.customer
+      : "",
+  ]
+    .map((value) => toNormalizedText(value))
+    .filter(Boolean);
+
+  for (const key of candidateKeys) {
+    if (userLookup.has(key)) {
+      return userLookup.get(key);
+    }
+  }
+
+  return null;
+}
+
 function normalizeChatHistoryRecord(item, index = 0) {
   const kind = String(item?.kind || item?.type || "session").toLowerCase();
   const startedAt = item?.startedAt || item?.createdAt || "";
@@ -127,7 +219,10 @@ function normalizeChatHistoryRecord(item, index = 0) {
     selected: Boolean(item?.selected),
     userName: toText(item?.userName, "N/A"),
     userId: toText(item?.userId, "N/A"),
-    readerName: toText(item?.readerName || item?.adminName || item?.expertName || item?.hostName, "N/A"),
+    readerName: toText(
+      item?.readerName || item?.adminName || item?.expertName || item?.hostName,
+      "N/A"
+    ),
     status: toText(item?.status, "N/A"),
     amount:
       item?.amount ??
@@ -154,7 +249,10 @@ function normalizeChatHistoryRecord(item, index = 0) {
       ),
       "N/A"
     ),
-    transactionDetail: toText(item?.transactionDetail || item?.notes || item?.detail, "N/A"),
+    transactionDetail: toText(
+      item?.transactionDetail || item?.notes || item?.detail,
+      "N/A"
+    ),
     date: startedAt || item?.date || endedAt || "",
     createdDate: startedAt || item?.date || "",
     startedAt,
@@ -173,7 +271,8 @@ function normalizeSessionHistoryRecord(session, user, index = 0) {
     session?.createdAt ||
     "";
 
-  const endedAt = session?.endedAt || session?.closedAt || session?.updatedAt || "";
+  const endedAt =
+    session?.endedAt || session?.closedAt || session?.updatedAt || "";
   const amount = pickFirst(
     session?.amount,
     session?.deductedAmount,
@@ -232,12 +331,24 @@ function normalizeCreditHistoryRecord(record, user, index = 0) {
     record?.creditAmount,
     record?.totalCredit
   );
-  const usedAmount = pickFirst(record?.used, record?.usedAmount, record?.usedCredit);
-  const balanceAmount = pickFirst(record?.balance, record?.balanceAfter, record?.remainingBalance);
-  const gateway = record?.gateway || record?.provider || record?.paymentMethod || "N/A";
-  const currencyCode = String(record?.currencyCode || record?.currency || record?.paymentCurrency || "N/A").toUpperCase();
+  const usedAmount = pickFirst(
+    record?.used,
+    record?.usedAmount,
+    record?.usedCredit
+  );
+  const balanceAmount = pickFirst(
+    record?.balance,
+    record?.balanceAfter,
+    record?.remainingBalance
+  );
+  const gateway =
+    record?.gateway || record?.provider || record?.paymentMethod || "N/A";
+  const currencyCode = String(
+    record?.currencyCode || record?.currency || record?.paymentCurrency || "N/A"
+  ).toUpperCase();
   const currencySymbol =
-    record?.currencySymbol || (currencyCode === "INR" ? "₹" : currencyCode === "USD" ? "$" : "");
+    record?.currencySymbol ||
+    (currencyCode === "INR" ? "₹" : currencyCode === "USD" ? "$" : "");
 
   return normalizeChatHistoryRecord(
     {
@@ -245,7 +356,8 @@ function normalizeCreditHistoryRecord(record, user, index = 0) {
       kind: "payment",
       userName: user?.userName || record?.userName || "N/A",
       userId: user?.userId || record?.userId || "N/A",
-      readerName: record?.paymentMethod || record?.transactionType || "Admin Credit",
+      readerName:
+        record?.paymentMethod || record?.transactionType || "Admin Credit",
       status: record?.status || "completed",
       amount: creditAmount,
       creditAmount,
@@ -254,7 +366,11 @@ function normalizeCreditHistoryRecord(record, user, index = 0) {
       gateway,
       currencyCode,
       currencySymbol,
-      amountDisplay: formatAmountWithCurrency(creditAmount, currencyCode, currencySymbol),
+      amountDisplay: formatAmountWithCurrency(
+        creditAmount,
+        currencyCode,
+        currencySymbol
+      ),
       transactionId: record?.transactionId || "N/A",
       transactionDetail:
         record?.transactionType ||
@@ -304,17 +420,18 @@ function matchesIdentity(sourceValues = [], targetValues = []) {
   return normalizedSource.some((value) => normalizedTarget.includes(value));
 }
 
-function normalizeCreditRecord(item, index = 0) {
+function normalizeCreditRecord(item, index = 0, userLookup = new Map()) {
   const user = item?.user || item?.owner || item?.customer || {};
+  const matchedUser = findUserForCredit(item, userLookup);
   const meta = item?.meta || item?.metadata || {};
   const userIdValue =
     typeof item?.user === "string" || typeof item?.user === "number"
       ? item.user
       : typeof item?.owner === "string" || typeof item?.owner === "number"
-        ? item.owner
-        : typeof item?.customer === "string" || typeof item?.customer === "number"
-          ? item.customer
-          : undefined;
+      ? item.owner
+      : typeof item?.customer === "string" || typeof item?.customer === "number"
+      ? item.customer
+      : undefined;
 
   const transactionId = pickFirst(
     item?.transactionId,
@@ -335,9 +452,13 @@ function normalizeCreditRecord(item, index = 0) {
     item?.paymentMethod,
     item?.method,
     item?.gateway,
+    item?.transactionType,
+    item?.type,
     meta?.paymentMethod,
     meta?.method,
-    meta?.gateway
+    meta?.gateway,
+    meta?.transactionType,
+    meta?.type
   );
 
   const gateway = pickFirst(
@@ -381,27 +502,90 @@ function normalizeCreditRecord(item, index = 0) {
     0
   );
 
-  const usedAmount = toNumber(
-    pickFirst(item?.used, item?.usedAmount, item?.usedCredit, meta?.used, meta?.usedAmount),
-    0
+  const rawUsedValue = pickFirst(
+    item?.used,
+    item?.usedAmount,
+    item?.usedCredit,
+    meta?.used,
+    meta?.usedAmount
   );
-
-  const balance = toNumber(
-    pickFirst(
-      item?.balance,
-      item?.balanceAfter,
-      item?.remainingBalance,
-      meta?.balance,
-      meta?.balanceAfter
-    ),
-    Math.max(creditAmount - usedAmount, 0)
+  const rawBalanceValue = pickFirst(
+    item?.balance,
+    item?.balanceAfter,
+    item?.remainingBalance,
+    meta?.balance,
+    meta?.balanceAfter
   );
+  const usedAmount = toNumber(rawUsedValue, 0);
+  const balance =
+    rawBalanceValue !== undefined
+      ? toNumber(rawBalanceValue, 0)
+      : Math.max(creditAmount - usedAmount, 0);
+  const resolvedUserName = pickFirst(
+    matchedUser?.name,
+    matchedUser?.fullName,
+    matchedUser?.userName,
+    matchedUser?.raw?.name,
+    matchedUser?.raw?.fullName,
+    matchedUser?.raw?.user?.name,
+    matchedUser?.raw?.user?.fullName,
+    matchedUser?.raw?.user?.userName,
+    item?.userName,
+    item?.name,
+    item?.fullName,
+    item?.ownerName,
+    item?.user?.name,
+    item?.user?.fullName,
+    item?.user?.userName,
+    user?.name,
+    user?.fullName,
+    user?.userName,
+    typeof item?.user === "object" ? item?.user?.name : undefined,
+    typeof item?.user === "object" ? item?.user?.fullName : undefined,
+    typeof item?.user === "object" ? item?.user?.userName : undefined,
+    typeof item?.owner === "object" ? item?.owner?.name : undefined,
+    typeof item?.customer === "object" ? item?.customer?.name : undefined
+  );
+  const resolvedEmail = pickFirst(
+    matchedUser?.email,
+    matchedUser?.raw?.email,
+    matchedUser?.raw?.user?.email,
+    item?.email,
+    item?.ownerEmail,
+    item?.userEmail,
+    item?.user?.email,
+    user?.email,
+    typeof item?.user === "object" ? item?.user?.email : undefined,
+    typeof item?.owner === "object" ? item?.owner?.email : undefined,
+    typeof item?.customer === "object" ? item?.customer?.email : undefined
+  );
+  const resolvedUsedAmount =
+    rawUsedValue !== undefined
+      ? usedAmount
+      : Math.max(creditAmount - balance, 0);
+  const resolvedBalance =
+    rawBalanceValue !== undefined
+      ? balance
+      : Math.max(creditAmount - resolvedUsedAmount, 0);
 
   return {
-    id: String(item?._id || item?.id || item?.creditId || item?.recordId || `credit-${index + 1}`),
+    id: String(
+      item?._id ||
+        item?.id ||
+        item?.creditId ||
+        item?.recordId ||
+        `credit-${index + 1}`
+    ),
     raw: item,
     userName: toText(
-      pickFirst(user?.name, item?.userName, item?.name, item?.fullName, item?.ownerName),
+      pickFirst(
+        resolvedUserName,
+        user?.name,
+        item?.userName,
+        item?.name,
+        item?.fullName,
+        item?.ownerName
+      ),
       "N/A"
     ),
     userId: toText(
@@ -417,15 +601,18 @@ function normalizeCreditRecord(item, index = 0) {
       ),
       "N/A"
     ),
-    email: toText(pickFirst(user?.email, item?.email, item?.ownerEmail, item?.userEmail), "N/A"),
+    email: toText(
+      pickFirst(resolvedEmail, user?.email, item?.ownerEmail, item?.userEmail),
+      "N/A"
+    ),
     transactionId: toText(transactionId, "N/A"),
     paymentMethod: toText(paymentMethod, "N/A"),
     gateway: toText(gateway, "N/A"),
     currencyCode: currencyCode || "N/A",
     currencySymbol: currencySymbol || "N/A",
     credit: creditAmount,
-    used: usedAmount,
-    balance,
+    used: resolvedUsedAmount,
+    balance: resolvedBalance,
     date: pickFirst(
       item?.createdAt,
       item?.transactionDate,
@@ -434,7 +621,12 @@ function normalizeCreditRecord(item, index = 0) {
       item?.updatedAt
     ),
     transactionType: toText(
-      pickFirst(item?.transactionType, item?.type, item?.entryType, meta?.transactionType),
+      pickFirst(
+        item?.transactionType,
+        item?.type,
+        item?.entryType,
+        meta?.transactionType
+      ),
       "credit"
     ),
     status: toText(
@@ -489,6 +681,7 @@ export default function UserCredit({ onNavigateScreen }) {
   const [selectedHistoryIds, setSelectedHistoryIds] = useState({});
 
   const columns = [
+    { title: "No.", key: "serial", width: 70 },
     { title: "User Name", key: "userName", width: 170 },
     { title: "User ID", key: "userId", width: 140 },
     { title: "Email", key: "email", width: 220 },
@@ -505,12 +698,50 @@ export default function UserCredit({ onNavigateScreen }) {
     setError("");
 
     try {
-      const data = await adminGetUserCredits();
-      const list = normalizeList(data, ["credits", "userCredits", "data", "results", "items"]);
-      setCredits(list.map((item, index) => normalizeCreditRecord(item, index)));
+      const [creditsResult, usersResult] = await Promise.allSettled([
+        adminGetUserCredits(),
+        adminGet("users"),
+      ]);
+
+      const creditsData =
+        creditsResult.status === "fulfilled" ? creditsResult.value : null;
+      const usersData =
+        usersResult.status === "fulfilled" ? usersResult.value : null;
+
+      const creditList = normalizeList(creditsData, [
+        "credits",
+        "userCredits",
+        "data",
+        "results",
+        "items",
+      ]);
+      const userList = normalizeList(usersData, [
+        "users",
+        "data",
+        "results",
+        "items",
+      ]);
+      const userLookup = buildUserLookup(
+        userList.map((item, index) => normalizeUserRecord(item, index))
+      );
+
+      const normalizedCredits = creditList.map((item, index) =>
+        normalizeCreditRecord(item, index, userLookup)
+      );
+
+      normalizedCredits.sort(
+        (a, b) =>
+          new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()
+      );
+
+      setCredits(normalizedCredits);
     } catch (err) {
       setCredits([]);
-      setError(err?.response?.data?.message || err?.message || "User credit load nahi ho paya.");
+      setError(
+        err?.response?.data?.message ||
+          err?.message ||
+          "User credit load nahi ho paya."
+      );
     } finally {
       setLoading(false);
     }
@@ -542,9 +773,15 @@ export default function UserCredit({ onNavigateScreen }) {
 
       const matchedSessions = sessionItems.filter((session) => {
         const sessionIdentityValues = [
-          typeof session?.user === "object" ? session?.user?._id || session?.user?.id : session?.user,
-          typeof session?.owner === "object" ? session?.owner?._id || session?.owner?.id : session?.owner,
-          typeof session?.customer === "object" ? session?.customer?._id || session?.customer?.id : session?.customer,
+          typeof session?.user === "object"
+            ? session?.user?._id || session?.user?.id
+            : session?.user,
+          typeof session?.owner === "object"
+            ? session?.owner?._id || session?.owner?.id
+            : session?.owner,
+          typeof session?.customer === "object"
+            ? session?.customer?._id || session?.customer?.id
+            : session?.customer,
           session?._id,
           session?.id,
           session?.userId,
@@ -562,11 +799,19 @@ export default function UserCredit({ onNavigateScreen }) {
       );
 
       const nextPaymentHistory = credits
-        .filter((record) => matchesIdentity([record.userId], selectedIdentityValues))
-        .map((record, index) => normalizeCreditHistoryRecord(record, user, index));
+        .filter((record) =>
+          matchesIdentity([record.userId], selectedIdentityValues)
+        )
+        .map((record, index) =>
+          normalizeCreditHistoryRecord(record, user, index)
+        );
 
-      nextChatHistory.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-      nextPaymentHistory.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+      nextChatHistory.sort(
+        (a, b) => new Date(b.date || 0) - new Date(a.date || 0)
+      );
+      nextPaymentHistory.sort(
+        (a, b) => new Date(b.date || 0) - new Date(a.date || 0)
+      );
 
       setChatSessionsHistory(nextChatHistory);
       setPaymentHistory(nextPaymentHistory);
@@ -608,7 +853,10 @@ export default function UserCredit({ onNavigateScreen }) {
 
   const totals = useMemo(
     () => ({
-      totalCredit: credits.reduce((sum, item) => sum + toNumber(item.credit), 0),
+      totalCredit: credits.reduce(
+        (sum, item) => sum + toNumber(item.credit),
+        0
+      ),
       usedCredit: credits.reduce((sum, item) => sum + toNumber(item.used), 0),
       balance: credits.reduce((sum, item) => sum + toNumber(item.balance), 0),
       records: credits.length,
@@ -656,10 +904,16 @@ export default function UserCredit({ onNavigateScreen }) {
     try {
       const selectedIdentityValues = getIdentityValues(user);
       const nextPaymentHistory = credits
-        .filter((record) => matchesIdentity([record.userId], selectedIdentityValues))
-        .map((record, index) => normalizeCreditHistoryRecord(record, user, index));
+        .filter((record) =>
+          matchesIdentity([record.userId], selectedIdentityValues)
+        )
+        .map((record, index) =>
+          normalizeCreditHistoryRecord(record, user, index)
+        );
 
-      nextPaymentHistory.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+      nextPaymentHistory.sort(
+        (a, b) => new Date(b.date || 0) - new Date(a.date || 0)
+      );
       setPaymentHistory(nextPaymentHistory);
     } catch (err) {
       setPaymentHistory([]);
@@ -719,7 +973,9 @@ export default function UserCredit({ onNavigateScreen }) {
     } catch (err) {
       Alert.alert(
         "Error",
-        err?.response?.data?.message || err?.message || "Credit add nahi ho paya."
+        err?.response?.data?.message ||
+          err?.message ||
+          "Credit add nahi ho paya."
       );
     } finally {
       setSaving(false);
@@ -728,17 +984,26 @@ export default function UserCredit({ onNavigateScreen }) {
 
   const renderRowActions = (user) => (
     <View style={styles.actionsWrap}>
-      <TouchableOpacity style={[styles.actionBtn, styles.addBtnAction]} onPress={() => openAddCredits(user)}>
+      <TouchableOpacity
+        style={[styles.actionBtn, styles.addBtnAction]}
+        onPress={() => openAddCredits(user)}
+      >
         <Ionicons name="add-circle-outline" size={14} color="#fff" />
         <Text style={styles.actionText}>Add Credits</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={[styles.actionBtn, styles.chatBtn]} onPress={() => openChat(user)}>
+      <TouchableOpacity
+        style={[styles.actionBtn, styles.chatBtn]}
+        onPress={() => openChat(user)}
+      >
         <Ionicons name="chatbubble-ellipses-outline" size={14} color="#fff" />
         <Text style={styles.actionText}>Chat</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={[styles.actionBtn, styles.paymentBtn]} onPress={() => openPayment(user)}>
+      <TouchableOpacity
+        style={[styles.actionBtn, styles.paymentBtn]}
+        onPress={() => openPayment(user)}
+      >
         <Ionicons name="card-outline" size={14} color="#fff" />
         <Text style={styles.actionText}>Payment</Text>
       </TouchableOpacity>
@@ -800,9 +1065,17 @@ export default function UserCredit({ onNavigateScreen }) {
       );
     }
 
-    if (col.key === "userName" || col.key === "readerName" || col.key === "createdDate") {
+    if (
+      col.key === "userName" ||
+      col.key === "readerName" ||
+      col.key === "createdDate"
+    ) {
       if (col.key === "createdDate") {
-        return <Text style={styles.historyCellStrong}>{formatDate(item.createdDate)}</Text>;
+        return (
+          <Text style={styles.historyCellStrong}>
+            {formatDate(item.createdDate)}
+          </Text>
+        );
       }
 
       return (
@@ -813,17 +1086,28 @@ export default function UserCredit({ onNavigateScreen }) {
     }
 
     if (col.key === "date") {
-      return <Text style={styles.historyCellStrong}>{formatDate(item.date)}</Text>;
+      return (
+        <Text style={styles.historyCellStrong}>{formatDate(item.date)}</Text>
+      );
     }
 
-    if (col.key === "amount" || col.key === "creditAmount" || col.key === "usedAmount" || col.key === "balanceAmount") {
+    if (
+      col.key === "amount" ||
+      col.key === "creditAmount" ||
+      col.key === "usedAmount" ||
+      col.key === "balanceAmount"
+    ) {
       return (
         <Text style={styles.historyCellStrong}>
-          {col.key === "amount" && item.amountDisplay && item.amountDisplay !== "N/A"
+          {col.key === "amount" &&
+          item.amountDisplay &&
+          item.amountDisplay !== "N/A"
             ? item.amountDisplay
-            : item[col.key] === null || item[col.key] === undefined || item[col.key] === ""
-              ? "N/A"
-              : String(item[col.key])}
+            : item[col.key] === null ||
+              item[col.key] === undefined ||
+              item[col.key] === ""
+            ? "N/A"
+            : String(item[col.key])}
         </Text>
       );
     }
@@ -831,13 +1115,20 @@ export default function UserCredit({ onNavigateScreen }) {
     if (col.key === "currencyCode") {
       return (
         <Text style={styles.historyCellStrong}>
-          {item.currencyCode || "N/A"} {item.currencySymbol && item.currencySymbol !== "N/A" ? `(${item.currencySymbol})` : ""}
+          {item.currencyCode || "N/A"}{" "}
+          {item.currencySymbol && item.currencySymbol !== "N/A"
+            ? `(${item.currencySymbol})`
+            : ""}
         </Text>
       );
     }
 
     if (col.key === "status") {
-      return <Text style={styles.historyCellStrong}>{toText(item.status).toUpperCase()}</Text>;
+      return (
+        <Text style={styles.historyCellStrong}>
+          {toText(item.status).toUpperCase()}
+        </Text>
+      );
     }
 
     return (
@@ -847,7 +1138,15 @@ export default function UserCredit({ onNavigateScreen }) {
     );
   };
 
-  const renderCell = (item, col) => {
+  const renderCell = (item, col, rowIndex) => {
+    if (col.key === "serial") {
+      return (
+        <Text style={styles.serialText} numberOfLines={1}>
+          {String(rowIndex + 1)}
+        </Text>
+      );
+    }
+
     if (col.key === "userName") {
       return (
         <View style={styles.userCell}>
@@ -862,7 +1161,9 @@ export default function UserCredit({ onNavigateScreen }) {
     }
 
     if (col.key === "credit" || col.key === "used" || col.key === "balance") {
-      return <Text style={styles.cellTextStrong}>{toText(item[col.key], "0")}</Text>;
+      return (
+        <Text style={styles.cellTextStrong}>{toText(item[col.key], "0")}</Text>
+      );
     }
 
     if (col.key === "date") {
@@ -916,10 +1217,34 @@ export default function UserCredit({ onNavigateScreen }) {
       </View>
 
       <View style={styles.statsRow}>
-        <StatCard label="Total Records" value={totals.records} icon="albums-outline" iconColor="#7C3AED" iconBackground="#F4EEFF" />
-        <StatCard label="Total Credit" value={totals.totalCredit} icon="wallet-outline" iconColor="#0EA5E9" iconBackground="#E0F2FE" />
-        <StatCard label="Used Credit" value={totals.usedCredit} icon="receipt-outline" iconColor="#F59E0B" iconBackground="#FFF7E6" />
-        <StatCard label="Balance" value={totals.balance} icon="cash-outline" iconColor="#16A34A" iconBackground="#ECFDF3" />
+        <StatCard
+          label="Total Records"
+          value={totals.records}
+          icon="albums-outline"
+          iconColor="#7C3AED"
+          iconBackground="#F4EEFF"
+        />
+        <StatCard
+          label="Total Credit"
+          value={totals.totalCredit}
+          icon="wallet-outline"
+          iconColor="#0EA5E9"
+          iconBackground="#E0F2FE"
+        />
+        <StatCard
+          label="Used Credit"
+          value={totals.usedCredit}
+          icon="receipt-outline"
+          iconColor="#F59E0B"
+          iconBackground="#FFF7E6"
+        />
+        <StatCard
+          label="Balance"
+          value={totals.balance}
+          icon="cash-outline"
+          iconColor="#16A34A"
+          iconBackground="#ECFDF3"
+        />
       </View>
 
       {loading ? (
@@ -1060,11 +1385,15 @@ export default function UserCredit({ onNavigateScreen }) {
 
               <View style={styles.chatSummaryStats}>
                 <View style={styles.chatStatBox}>
-                  <Text style={styles.chatStatValue}>{chatSessionsHistory.length}</Text>
+                  <Text style={styles.chatStatValue}>
+                    {chatSessionsHistory.length}
+                  </Text>
                   <Text style={styles.chatStatLabel}>Chat Sessions</Text>
                 </View>
                 <View style={styles.chatStatBox}>
-                  <Text style={styles.chatStatValue}>{paymentHistory.length}</Text>
+                  <Text style={styles.chatStatValue}>
+                    {paymentHistory.length}
+                  </Text>
                   <Text style={styles.chatStatLabel}>Payment Records</Text>
                 </View>
               </View>
@@ -1079,12 +1408,19 @@ export default function UserCredit({ onNavigateScreen }) {
 
             {chatHistoryError ? (
               <View style={styles.statusBox}>
-                <Ionicons name="alert-circle-outline" size={18} color="#DC2626" />
+                <Ionicons
+                  name="alert-circle-outline"
+                  size={18}
+                  color="#DC2626"
+                />
                 <Text style={styles.statusText}>{chatHistoryError}</Text>
               </View>
             ) : null}
 
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.chatModalScroll}>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.chatModalScroll}
+            >
               <View style={styles.historySection}>
                 <Text style={styles.historySectionTitle}>Chat Sessions</Text>
                 <View style={styles.historyTableCard}>
@@ -1097,7 +1433,9 @@ export default function UserCredit({ onNavigateScreen }) {
               </View>
 
               <View style={styles.historySection}>
-                <Text style={styles.historySectionTitle}>Payment / Credit History</Text>
+                <Text style={styles.historySectionTitle}>
+                  Payment / Credit History
+                </Text>
                 <View style={styles.historyTableCard}>
                   <DataTable
                     columns={paymentHistoryColumns}
@@ -1185,7 +1523,9 @@ export default function UserCredit({ onNavigateScreen }) {
                 </View>
                 <View style={styles.chatStatBox}>
                   <Text style={styles.chatStatValue}>
-                    {paymentHistory.reduce((sum, item) => sum + toNumber(item.amount), 0).toLocaleString("en-IN")}
+                    {paymentHistory
+                      .reduce((sum, item) => sum + toNumber(item.amount), 0)
+                      .toLocaleString("en-IN")}
                   </Text>
                   <Text style={styles.chatStatLabel}>Total Amount</Text>
                 </View>
@@ -1195,13 +1535,19 @@ export default function UserCredit({ onNavigateScreen }) {
             {paymentHistoryLoading ? (
               <View style={styles.statusBox}>
                 <ActivityIndicator color="#7C3AED" />
-                <Text style={styles.statusText}>Payment history loading...</Text>
+                <Text style={styles.statusText}>
+                  Payment history loading...
+                </Text>
               </View>
             ) : null}
 
             {paymentHistoryError ? (
               <View style={styles.statusBox}>
-                <Ionicons name="alert-circle-outline" size={18} color="#DC2626" />
+                <Ionicons
+                  name="alert-circle-outline"
+                  size={18}
+                  color="#DC2626"
+                />
                 <Text style={styles.statusText}>{paymentHistoryError}</Text>
               </View>
             ) : null}
@@ -1401,6 +1747,11 @@ const styles = StyleSheet.create({
   },
   cellTextStrong: {
     color: "#fff",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  serialText: {
+    color: "#C4B5FD",
     fontSize: 12,
     fontWeight: "900",
   },

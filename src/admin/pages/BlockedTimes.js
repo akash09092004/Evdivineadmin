@@ -21,6 +21,7 @@ import {
   adminGetBookings,
   adminGetUpcomingBookings,
   normalizeList,
+  normalizeObject,
 } from "../utils/adminApi";
 import { Colors } from "../../theme/colors";
 
@@ -42,6 +43,11 @@ function formatDateTime(value) {
   return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
 }
 
+function toText(value) {
+  if (value === null || value === undefined) return "";
+  return String(value).trim();
+}
+
 function normalizeBlockedTime(item) {
   return {
     id: item?._id || item?.id || `blocked-${Math.random().toString(36).slice(2)}`,
@@ -58,6 +64,14 @@ function normalizeBlockedTime(item) {
 function normalizeBooking(item, index = 0) {
   const user = item?.user || item?.customer || {};
   const advisor = item?.advisor || item?.admin || item?.consultant || {};
+  const userId =
+    toText(item?.userId) ||
+    toText(item?.customerId) ||
+    (typeof item?.user === "string" ? toText(item.user) : "");
+  const advisorId =
+    toText(item?.advisorId) ||
+    toText(item?.consultantId) ||
+    (typeof item?.advisor === "string" ? toText(item.advisor) : "");
 
   return {
     id:
@@ -71,6 +85,8 @@ function normalizeBooking(item, index = 0) {
       user?.fullName ||
       item?.userName ||
       item?.customerName ||
+      (typeof item?.user === "string" ? item.user : "") ||
+      userId ||
       item?.name ||
       "N/A",
     advisorName:
@@ -78,6 +94,8 @@ function normalizeBooking(item, index = 0) {
       advisor?.fullName ||
       item?.advisorName ||
       item?.consultantName ||
+      (typeof item?.advisor === "string" ? item.advisor : "") ||
+      advisorId ||
       "N/A",
     service: item?.service || item?.package || item?.plan || "Booking",
     status: String(item?.status || item?.bookingStatus || item?.state || "N/A"),
@@ -91,13 +109,20 @@ function normalizeBooking(item, index = 0) {
 
 function extractBlockedTimes(data) {
   if (!data || typeof data !== "object") return [];
-  const list = normalizeList(data, ["blockedTimes", "data", "items", "results"]);
+  const source = normalizeObject(data);
+  const list = normalizeList(source, [
+    "blockedTimes",
+    "data",
+    "items",
+    "results",
+  ]);
   return Array.isArray(list) ? list : [];
 }
 
 function extractBookings(data) {
   if (!data || typeof data !== "object") return [];
-  const list = normalizeList(data, ["bookings", "data", "items", "results"]);
+  const source = normalizeObject(data);
+  const list = normalizeList(source, ["bookings", "data", "items", "results"]);
   return Array.isArray(list) ? list : [];
 }
 
@@ -157,6 +182,12 @@ export default function BlockedTimes() {
       setBlockedTimes([]);
       setBookings([]);
       setUpcomingBookings([]);
+      console.warn("[BlockedTimes] loadData failed", {
+        message: err?.message,
+        status: err?.response?.status,
+        data: err?.response?.data,
+        attemptedUrls: err?.attemptedUrls,
+      });
       setError(
         err?.response?.data?.message ||
           err?.message ||

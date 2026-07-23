@@ -2,7 +2,67 @@ import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from "react-native";
 import SearchBar from "../components/SearchBar";
 import DataTable from "../components/DataTable";
-import { adminGet, normalizeList } from "../utils/adminApi";
+import { adminGet, normalizeList, normalizeObject } from "../utils/adminApi";
+
+function toText(value) {
+  if (value === null || value === undefined) return "";
+  return String(value).trim();
+}
+
+function formatDate(value) {
+  if (!value) return "N/A";
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
+}
+
+function normalizeHistoryNote(item) {
+  const source = normalizeObject(item);
+  const user = source?.user || source?.customer || source?.client || {};
+  const booking = source?.booking || source?.appointment || source?.session || {};
+  const createdBy = source?.createdBy || source?.author || source?.admin || {};
+
+  return {
+    user:
+      user?.name ||
+      user?.fullName ||
+      source?.userName ||
+      source?.customerName ||
+      source?.name ||
+      toText(source?.userId) ||
+      toText(source?.customerId) ||
+      "N/A",
+    booking:
+      booking?.bookingId ||
+      booking?.referenceId ||
+      booking?.name ||
+      source?.bookingId ||
+      source?.service ||
+      source?.appointmentId ||
+      "N/A",
+    note:
+      source?.note ||
+      source?.message ||
+      source?.text ||
+      source?.description ||
+      source?.remarks ||
+      "N/A",
+    createdBy:
+      createdBy?.name ||
+      createdBy?.fullName ||
+      source?.createdByName ||
+      source?.authorName ||
+      source?.createdBy ||
+      "Admin",
+    date: formatDate(
+      source?.date ||
+        source?.createdAt ||
+        source?.updatedAt ||
+        source?.timestamp ||
+        source?.noteDate
+    ),
+  };
+}
 
 export default function HistoryNotes() {
   const [search, setSearch] = useState("");
@@ -29,18 +89,31 @@ export default function HistoryNotes() {
         const data = await adminGet("historyNotes");
         if (!mounted) return;
 
-        const list = normalizeList(data, ["historyNotes", "notes", "data"]);
-        setNotes(
-          list.map((item) => ({
-            user: item.user || item.name || "N/A",
-            booking: item.booking || item.service || "N/A",
-            note: item.note || item.message || "N/A",
-            createdBy: item.createdBy || item.author || "Admin",
-            date: item.date || item.createdAt || "N/A",
-          }))
-        );
+        const source = normalizeObject(data);
+        const list = normalizeList(source, [
+          "historyNotes",
+          "notes",
+          "data",
+          "items",
+          "results",
+        ]);
+
+        const nextNotes = list.map(normalizeHistoryNote);
+        setNotes(nextNotes);
+
+        if (__DEV__) {
+          console.log("[HistoryNotes] loaded", {
+            count: nextNotes.length,
+            sample: nextNotes[0] || null,
+          });
+        }
       } catch (err) {
         if (!mounted) return;
+        console.warn("[HistoryNotes] load failed", {
+          message: err?.message,
+          status: err?.response?.status,
+          data: err?.response?.data,
+        });
         setError(
           err?.response?.data?.message ||
             err?.message ||

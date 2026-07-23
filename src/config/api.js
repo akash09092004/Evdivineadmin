@@ -65,9 +65,13 @@ function getWebFallbacks() {
 
   const hostname = window.location?.hostname;
   const protocol = window.location?.protocol || "http:";
+  const hostUrl =
+    hostname && hostname !== "undefined" && hostname !== "null"
+      ? withApiPath(`${protocol}//${hostname}:5000`)
+      : "";
 
   return uniqueUrls([
-    withApiPath(`${protocol}//${hostname}:5000`),
+    hostUrl,
     withApiPath(`${protocol}//localhost:5000`),
     withApiPath(`${protocol}//127.0.0.1:5000`),
   ]);
@@ -82,7 +86,11 @@ const extraApiUrl = withApiPath(
 
 function getBaseCandidates() {
   const webFallbacks = getWebFallbacks();
-  const envCandidates = uniqueUrls([extraApiUrl, envApiUrl].map(withApiPath));
+  const envCandidates = uniqueUrls(
+    [extraApiUrl, envApiUrl]
+      .map(withApiPath)
+      .filter((value) => value && value !== "http://undefined:5000/api")
+  );
   const runtimeCandidates = uniqueUrls(
     [DEFAULT_LAN_API, ...EMULATOR_APIS, DEFAULT_LOCAL_API].map(withApiPath)
   );
@@ -94,7 +102,11 @@ function getBaseCandidates() {
         envCandidates.every(isLocalDevelopmentUrl));
 
     if (shouldPreferWebFallbacks) {
-      return uniqueUrls([...webFallbacks, ...envCandidates, ...runtimeCandidates]);
+      return uniqueUrls([
+        ...webFallbacks,
+        ...envCandidates,
+        ...runtimeCandidates,
+      ]);
     }
   }
 

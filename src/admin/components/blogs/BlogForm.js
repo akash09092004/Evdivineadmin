@@ -84,6 +84,7 @@ export default function BlogForm({
   const { width } = useWindowDimensions();
   const isWide = width >= 1100;
   const isCompact = width < 760;
+  const isTiny = width < 480;
   const [form, setForm] = useState({
     title: "",
     slug: "",
@@ -290,7 +291,8 @@ export default function BlogForm({
   return (
     <ScrollView
       showsVerticalScrollIndicator={false}
-      contentContainerStyle={styles.page}
+      style={styles.scroll}
+      contentContainerStyle={[styles.page, isTiny && styles.pageTiny]}
     >
       <View style={[styles.headerCard, isCompact && styles.headerCardStack]}>
         <View style={styles.headerTextWrap}>
@@ -560,9 +562,18 @@ export default function BlogForm({
 }
 
 const styles = StyleSheet.create({
+  scroll: {
+    flex: 1,
+    minHeight: 0,
+  },
   page: {
     gap: 14,
+    paddingHorizontal: 2,
     paddingBottom: 24,
+  },
+  pageTiny: {
+    paddingHorizontal: 0,
+    gap: 12,
   },
   loadingCard: {
     minHeight: 260,
@@ -584,7 +595,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BLOG_COLORS.border,
     backgroundColor: BLOG_COLORS.panel,
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
     paddingVertical: 14,
     flexDirection: "row",
     alignItems: "center",
@@ -644,7 +655,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BLOG_COLORS.border,
     backgroundColor: BLOG_COLORS.panel,
-    padding: 16,
+    padding: 14,
     gap: 12,
     ...blogShadow,
   },

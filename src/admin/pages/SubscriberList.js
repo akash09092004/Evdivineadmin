@@ -12,7 +12,12 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import SearchBar from "../components/SearchBar";
-import { adminGet, adminSendBulkEmail, normalizeList } from "../utils/adminApi";
+import {
+  adminGet,
+  adminSendBulkEmail,
+  getAdminBulkEmailEndpoint,
+  normalizeList,
+} from "../utils/adminApi";
 
 function normalizeSubscriber(item, index = 0) {
   const email = item.email || item.subscriberEmail || item.mail || "N/A";
@@ -119,6 +124,14 @@ export default function SubscriberList() {
 
     setSending(true);
     try {
+      const bulkEmailEndpoint = getAdminBulkEmailEndpoint();
+
+      if (!bulkEmailEndpoint) {
+        throw new Error(
+          "Bulk email endpoint configured nahi hai. `.env` me EXPO_PUBLIC_ADMIN_BULK_EMAIL_ENDPOINT set karo."
+        );
+      }
+
       const response = await adminSendBulkEmail({
         recipients,
         emails: recipients,

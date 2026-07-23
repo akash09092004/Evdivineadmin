@@ -58,12 +58,23 @@ export function normalizeUserRecord(user, index = 0) {
     user?.uid ||
     "";
   const userId = buildUserId(user, index);
-  const isBlocked = Boolean(user?.isBlocked || user?.blocked || user?.active === false);
+  const password =
+    user?.password ||
+    user?.passcode ||
+    user?.passwordHash ||
+    user?.hashedPassword ||
+    user?.encryptedPassword ||
+    user?.pwd ||
+    user?.secret ||
+    "";
+  const isBlocked = Boolean(
+    user?.isBlocked || user?.blocked || user?.active === false
+  );
   const isActive = isBlocked
     ? false
     : user?.isActive !== undefined
-      ? Boolean(user.isActive)
-      : true;
+    ? Boolean(user.isActive)
+    : true;
   const isVerified = Boolean(
     user?.otpVerified ||
       user?.verified ||
@@ -80,6 +91,7 @@ export function normalizeUserRecord(user, index = 0) {
     email: user?.email || "N/A",
     phone: user?.phone || user?.mobile || "N/A",
     address: user?.address || user?.location || user?.city || "N/A",
+    password: password || "N/A",
     verificationStatus: isVerified ? "verified" : "unverified",
     accountStatus: isBlocked ? "blocked" : isActive ? "active" : "inactive",
     status:

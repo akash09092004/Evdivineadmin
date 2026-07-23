@@ -33,6 +33,7 @@ import BonusesConfig from "./pages/BonusesConfig";
 import Banners from "./pages/Banners";
 import Rashis from "./pages/Rashis";
 import PageContent from "./pages/PageContent";
+import ContactUser from "./pages/ContactUser";
 import DropMeList from "./pages/DropMeList";
 import SubscriberList from "./pages/SubscriberList.js";
 import HistoryNotes from "./pages/HistoryNotes";
@@ -356,6 +357,7 @@ export default function AdminDashboard({ navigation, route }) {
     if (currentScreen === "Banners") return <Banners />;
     if (currentScreen === "Rashis") return <Rashis />;
     if (currentScreen === "PageContent") return <PageContent />;
+    if (currentScreen === "ContactUser") return <ContactUser />;
     if (currentScreen === "DropMeList") return <DropMeList />;
     if (currentScreen === "SubscriberList") return <SubscriberList />;
     if (currentScreen === "HistoryNotes") return <HistoryNotes />;

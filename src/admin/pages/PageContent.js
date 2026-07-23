@@ -12,8 +12,15 @@ import {
   Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { adminGet, adminPut, normalizeList } from "../utils/adminApi";
+import {
+  adminGetPageContent,
+  adminGetPageContentByKey,
+  adminSavePageContent,
+  normalizePageContentList,
+  normalizePageContentRecord,
+} from "../utils/adminApi";
 import { pageContentOptions } from "../utils/adminMenu";
+import { slugify } from "../components/blogs/blogUtils";
 
 const fallbackPages = [
   { title: "My Profile", file: "src/Profile/My Profile.js" },
@@ -35,22 +42,49 @@ const fallbackPages = [
   },
 ];
 
-function normalizeTitle(value) {
-  return String(value || "").trim().toLowerCase();
+function normalizeText(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase();
+}
+
+function normalizePageKey(value) {
+  return slugify(value || "");
+}
+
+function makePageRecord(page) {
+  const pageKey = page.pageKey || page.page || normalizePageKey(page.title);
+
+  return {
+    ...page,
+    pageKey,
+    page: page.page || pageKey,
+  };
 }
 
 function buildBasePages() {
-  const optionPages = pageContentOptions.map((title) => ({
-    title,
-    file: "Backend content",
-  }));
+  const optionPages = pageContentOptions.map((title) =>
+    makePageRecord({
+      title,
+      file: "Backend content",
+    })
+  );
 
-  const combined = [...fallbackPages, ...optionPages];
+  const combined = [
+    ...fallbackPages.map((page) =>
+      makePageRecord({
+        ...page,
+        pageKey: normalizePageKey(page.title),
+        page: normalizePageKey(page.title),
+      })
+    ),
+    ...optionPages,
+  ];
   const unique = [];
   const seen = new Set();
 
   combined.forEach((page) => {
-    const key = normalizeTitle(page.title);
+    const key = normalizePageKey(page.pageKey || page.page || page.title);
     if (!key || seen.has(key)) return;
 
     seen.add(key);
@@ -64,15 +98,21 @@ function mergeBackendPages(basePages, backendPages) {
   const merged = [...basePages];
 
   backendPages.forEach((page) => {
-    const key = normalizeTitle(page.title);
-    const index = merged.findIndex((item) => normalizeTitle(item.title) === key);
+    const normalized = makePageRecord(page);
+    const key = normalizePageKey(
+      normalized.pageKey || normalized.page || normalized.title
+    );
+    const index = merged.findIndex((item) => {
+      const itemKey = normalizePageKey(item.pageKey || item.page || item.title);
+      return itemKey === key;
+    });
 
     if (index >= 0) {
-      merged[index] = { ...merged[index], ...page };
+      merged[index] = { ...merged[index], ...normalized };
       return;
     }
 
-    merged.push(page);
+    merged.push(normalized);
   });
 
   return merged;
@@ -106,24 +146,39 @@ export default function PageContent() {
       setError("");
 
       try {
-        const data = await adminGet("pageContent");
+        const data = await adminGetPageContent();
         if (!mounted) return;
 
-        const list = normalizeList(data, ["pages", "pageContent", "data"]);
-        const backendPages = list.map((item) => ({
+        const list = normalizePageContentList(data);
+        const backendPages = list.map((item) =>
+          makePageRecord({
+            pageKey: item.pageKey || item.page || item.slug || item.title,
+            page: item.page || item.pageKey || item.slug || item.title,
             title: item.title || item.page || item.name || "Untitled",
             file: item.file || item.path || "Backend content",
             keywords: item.keywords || "",
             description: item.description || "",
             content: item.content || "",
-          }));
+            isActive:
+              item.isActive !== undefined ? Boolean(item.isActive) : true,
+            createdAt: item.createdAt || null,
+            updatedAt: item.updatedAt || null,
+          })
+        );
         const mergedPages = mergeBackendPages(basePages, backendPages);
 
         setPages(mergedPages);
 
         const nextSelected =
-          mergedPages.find((page) => normalizeTitle(page.title) === normalizeTitle(selectedPage?.title)) ||
-          mergedPages[0];
+          mergedPages.find(
+            (page) =>
+              normalizePageKey(page.pageKey || page.page || page.title) ===
+              normalizePageKey(
+                selectedPage?.pageKey ||
+                  selectedPage?.page ||
+                  selectedPage?.title
+              )
+          ) || mergedPages[0];
 
         if (nextSelected) {
           setSelectedPage(nextSelected);
@@ -158,13 +213,13 @@ export default function PageContent() {
 
   const filteredPages = useMemo(() => {
     return pages.filter((page) =>
-      normalizeTitle(page.title).includes(normalizeTitle(search))
+      normalizeText(page.title).includes(normalizeText(search))
     );
   }, [search, pages]);
 
   const queryMatches = useMemo(() => {
     return pages.filter((page) =>
-      normalizeTitle(page.title).includes(normalizeTitle(pageQuery))
+      normalizeText(page.title).includes(normalizeText(pageQuery))
     );
   }, [pageQuery, pages]);
 
@@ -179,9 +234,43 @@ export default function PageContent() {
     });
   };
 
+  const loadPageByKey = async (page) => {
+    const pageKey =
+      page?.pageKey || page?.page || normalizePageKey(page?.title);
+
+    if (!pageKey) {
+      openPage(page);
+      return;
+    }
+
+    try {
+      const response = await adminGetPageContentByKey(pageKey);
+      const rawRecord = normalizePageContentRecord(response);
+      const record = makePageRecord(rawRecord || page);
+
+      openPage(
+        record?.pageKey
+          ? record
+          : {
+              ...page,
+              ...record,
+              pageKey,
+              page: record?.page || pageKey,
+            }
+      );
+    } catch (err) {
+      openPage(page);
+    }
+  };
+
   const handleFind = () => {
-    const term = normalizeTitle(pageQuery);
-    const exactMatch = pages.find((page) => normalizeTitle(page.title) === term);
+    const term = normalizeText(pageQuery);
+    const exactMatch = pages.find(
+      (page) =>
+        normalizeText(page.title) === term ||
+        normalizeText(page.pageKey) === term ||
+        normalizeText(page.page) === term
+    );
     const firstMatch = queryMatches[0];
 
     if (exactMatch) {
@@ -203,15 +292,31 @@ export default function PageContent() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await adminPut("pageContent", {
-        page: selectedPage.title,
-        ...form,
-      });
-      Alert.alert("Success", `${selectedPage.title} content saved successfully`);
+      await adminSavePageContent(
+        selectedPage.pageKey || normalizePageKey(selectedPage.title),
+        {
+          pageKey: selectedPage.pageKey || normalizePageKey(selectedPage.title),
+          page:
+            selectedPage.page ||
+            selectedPage.pageKey ||
+            normalizePageKey(selectedPage.title),
+          isActive:
+            selectedPage.isActive !== undefined
+              ? Boolean(selectedPage.isActive)
+              : true,
+          ...form,
+        }
+      );
+      Alert.alert(
+        "Success",
+        `${selectedPage.title} content saved successfully`
+      );
     } catch (err) {
       Alert.alert(
         "Error",
-        err?.response?.data?.message || err?.message || "Content save nahi ho paya"
+        err?.response?.data?.message ||
+          err?.message ||
+          "Content save nahi ho paya"
       );
     } finally {
       setSaving(false);
@@ -242,7 +347,12 @@ export default function PageContent() {
         </View>
       ) : null}
 
-      <View style={[styles.wrapper, { flexDirection: isDesktop ? "row" : "column" }]}>
+      <View
+        style={[
+          styles.wrapper,
+          { flexDirection: isDesktop ? "row" : "column" },
+        ]}
+      >
         <View style={[styles.leftBox, { width: isDesktop ? "34%" : "100%" }]}>
           <Text style={styles.boxTitle}>Search Profile Pages</Text>
 
@@ -264,7 +374,7 @@ export default function PageContent() {
               <TouchableOpacity
                 key={index}
                 style={[styles.pageItem, active && styles.activePage]}
-                onPress={() => openPage(page)}
+                onPress={() => loadPageByKey(page)}
               >
                 <View style={styles.pageIcon}>
                   <Ionicons
@@ -356,9 +466,15 @@ export default function PageContent() {
             multiline
           />
 
-          <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={saving}>
+          <TouchableOpacity
+            style={styles.saveBtn}
+            onPress={handleSave}
+            disabled={saving}
+          >
             <Ionicons name="save-outline" size={20} color="#fff" />
-            <Text style={styles.saveText}>{saving ? "Saving..." : "Save Content"}</Text>
+            <Text style={styles.saveText}>
+              {saving ? "Saving..." : "Save Content"}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
