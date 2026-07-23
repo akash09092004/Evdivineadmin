@@ -9,6 +9,7 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   useWindowDimensions,
   Platform,
 } from "react-native";
@@ -209,8 +210,12 @@ function buildMessagePayload(thread, selectedSession, draftMessage, attachment) 
 }
 
 export default function ChatRequests() {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const isDesktop = width >= 1100;
+  const mobileChatHeight = Math.min(
+    560,
+    Math.max(440, Math.round(height * 0.72))
+  );
   const [activeTab, setActiveTab] = useState("sessions");
   const [search, setSearch] = useState("");
 
@@ -240,6 +245,17 @@ export default function ChatRequests() {
   const selectedSessionRef = useRef(null);
   const freeMinutesSaveTimerRef = useRef(null);
   const messagesScrollRef = useRef(null);
+  const pageScrollRef = useRef(null);
+
+  const scrollChatComposerIntoView = () => {
+    if (isDesktop) {
+      return;
+    }
+
+    setTimeout(() => {
+      pageScrollRef.current?.scrollToEnd?.({ animated: true });
+    }, 80);
+  };
 
   const loadSessions = async () => {
     setSessionsLoading(true);
@@ -344,6 +360,12 @@ export default function ChatRequests() {
       clearInterval(listTimer);
     };
   }, [activeTab, selectedSession?.id]);
+
+  useEffect(() => {
+    if (selectedSession?.id) {
+      scrollChatComposerIntoView();
+    }
+  }, [selectedSession?.id, isDesktop]);
 
   useEffect(() => {
     if (activeTab !== "sessions" || !selectedSession?.id) {
@@ -701,25 +723,73 @@ export default function ChatRequests() {
         onPress: async () => {
           try {
             setSending(true);
-            if (thread.kind === "room") {
-              await adminEndChatRoom(thread.id);
-            } else {
-              await adminEndChatSession(thread.id);
+            const threadIdCandidates = [thread.id];
+
+            if (thread.kind === "room" && selectedSession.id) {
+              threadIdCandidates.push(selectedSession.id);
             }
 
-            await loadSessions();
-            setSelectedSession((previous) =>
-              previous
-                ? {
-                    ...previous,
-                    status: "ended",
+            let endResponse = null;
+
+            if (thread.kind === "room") {
+              for (const threadId of threadIdCandidates) {
+                try {
+                  endResponse = await adminEndChatRoom(threadId);
+                  break;
+                } catch (error) {
+                  if (error?.response?.status !== 404 && error?.response?.status !== 405) {
+                    throw error;
                   }
-                : previous
+                }
+              }
+            } else {
+              for (const threadId of threadIdCandidates) {
+                try {
+                  endResponse = await adminEndChatSession(threadId);
+                  break;
+                } catch (error) {
+                  if (error?.response?.status !== 404 && error?.response?.status !== 405) {
+                    throw error;
+                  }
+                }
+              }
+            }
+
+            const responseSession =
+              endResponse?.session ||
+              endResponse?.data?.session ||
+              endResponse?.chatSession ||
+              endResponse?.data?.chatSession ||
+              endResponse ||
+              null;
+
+            const nextEndedSession = responseSession
+              ? normalizeSession(responseSession)
+              : {
+                  ...selectedSession,
+                  status: "ended",
+                  endedAt: new Date().toISOString(),
+                };
+
+            const refreshedSessions = await loadSessions();
+            const matchedSession =
+              refreshedSessions.find((item) => item.id === nextEndedSession.id) ||
+              refreshedSessions.find((item) => item.chatroomId === nextEndedSession.chatroomId) ||
+              null;
+
+            setSelectedSession(
+              matchedSession
+                ? {
+                    ...matchedSession,
+                    status: "ended",
+                    endedAt:
+                      matchedSession.endedAt ||
+                      nextEndedSession.endedAt ||
+                      new Date().toISOString(),
+                  }
+                : nextEndedSession
             );
-            await openSession({
-              ...selectedSession,
-              status: "ended",
-            });
+            setSessionMessagesError("");
           } catch (err) {
             Alert.alert(
               "Error",
@@ -889,250 +959,274 @@ export default function ChatRequests() {
     }
 
     return (
-      <View style={styles.threadCard}>
-        <View style={styles.threadHeader}>
-          <View>
-            <Text style={styles.threadTitle}>{selectedSession.adminName}</Text>
-            <Text style={styles.threadSub}>
-              User ID: {selectedSession.userId || "N/A"} | Status:{" "}
-              {selectedSession.status}
-            </Text>
-            <Text style={styles.threadSub}>
-              Chat: {selectedSession.chatroomId || selectedSession.id}
-            </Text>
-          </View>
-
-          <View style={styles.threadHeaderActions}>
-            <View
-              style={[
-                styles.statusPill,
-                styles[getPillStyle(selectedSession.status)],
-              ]}
-            >
-              <Text style={styles.statusPillText}>
+      <KeyboardAvoidingView
+        style={styles.threadCardShell}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 100 : 0}
+      >
+        <View
+          style={[
+            styles.threadCard,
+            !isDesktop && { height: mobileChatHeight },
+          ]}
+        >
+          <View style={styles.threadHeader}>
+            <View>
+              <Text style={styles.threadTitle}>
+                {selectedSession.adminName}
+              </Text>
+              <Text style={styles.threadSub}>
+                User ID: {selectedSession.userId || "N/A"} | Status:{" "}
                 {selectedSession.status}
               </Text>
-            </View>
-
-            <TouchableOpacity
-              style={[
-                styles.endChatButton,
-                isThreadClosed(selectedSession) && styles.endChatButtonDisabled,
-              ]}
-              onPress={handleEndChat}
-              disabled={isThreadClosed(selectedSession) || sending}
-            >
-              <Text style={styles.endChatText}>End Chat</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <View style={styles.detailStrip}>
-          <Text style={styles.detailStripText}>
-            Requested: {formatDate(selectedSession.requestedAt)}
-          </Text>
-          <View style={styles.freeMinutesWrap}>
-            <Text style={styles.detailStripText}>
-              Free minutes: {freeMinutesDraft}
-            </Text>
-
-            <View style={styles.freeMinutesControls}>
-              <TouchableOpacity
-                style={[
-                  styles.minuteBtn,
-                  styles.minuteBtnMinus,
-                  (freeMinutesSaving ||
-                    isThreadClosed(selectedSession) ||
-                    freeMinutesDraft <= 0) &&
-                    styles.minuteBtnDisabled,
-                ]}
-                onPress={() => adjustFreeMinutes(-1)}
-                disabled={
-                  freeMinutesSaving ||
-                  isThreadClosed(selectedSession) ||
-                  freeMinutesDraft <= 0
-                }
-              >
-                <Text style={styles.minuteBtnText}>-</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.minuteBtn,
-                  styles.minuteBtnPlus,
-                  (freeMinutesSaving || isThreadClosed(selectedSession)) &&
-                    styles.minuteBtnDisabled,
-                ]}
-                onPress={() => adjustFreeMinutes(1)}
-                disabled={freeMinutesSaving || isThreadClosed(selectedSession)}
-              >
-                <Text style={styles.minuteBtnText}>+</Text>
-              </TouchableOpacity>
-            </View>
-
-            {freeMinutesSaving ? (
-              <Text style={styles.freeMinutesState}>Saving...</Text>
-            ) : freeMinutesError ? (
-              <Text style={styles.freeMinutesError}>{freeMinutesError}</Text>
-            ) : null}
-          </View>
-
-          <Text style={styles.detailStripText}>
-            Host: {selectedSession.hostId || "N/A"}
-          </Text>
-        </View>
-
-        <ScrollView
-          ref={messagesScrollRef}
-          style={styles.messagesScroll}
-          contentContainerStyle={styles.messagesList}
-        >
-          {sessionMessagesLoading ? (
-            <View style={styles.statusBox}>
-              <ActivityIndicator color={Colors.primary} />
-              <Text style={styles.statusText}>Messages loading...</Text>
-            </View>
-          ) : null}
-
-          {sessionMessagesError ? (
-            <View style={styles.statusBox}>
-              <Ionicons
-                name="alert-circle-outline"
-                size={18}
-                color={Colors.accent}
-              />
-              <Text style={styles.statusText}>{sessionMessagesError}</Text>
-            </View>
-          ) : null}
-
-          {sessionMessages.length === 0 && !sessionMessagesLoading ? (
-            <View style={styles.emptyThreadSmall}>
-              <Text style={styles.emptyThreadTitle}>No messages yet</Text>
-              <Text style={styles.emptyThreadText}>
-                Is session ke liye abhi koi message nahi mila.
+              <Text style={styles.threadSub}>
+                Chat: {selectedSession.chatroomId || selectedSession.id}
               </Text>
             </View>
-          ) : null}
 
-          {sessionMessages.map((message) => {
-            const isAdmin = message.senderRole === "admin";
-            const isImage =
-              message.type === "image" || Boolean(message.mediaUrl);
-
-            return (
+            <View style={styles.threadHeaderActions}>
               <View
-                key={message.id}
                 style={[
-                  styles.messageBubble,
-                  isAdmin ? styles.adminBubble : styles.userBubble,
+                  styles.statusPill,
+                  styles[getPillStyle(selectedSession.status)],
                 ]}
               >
-                <Text style={styles.messageSender}>
-                  {message.senderName} - {message.senderRole}
-                </Text>
-
-                {message.text ? (
-                  <Text style={styles.messageText}>{message.text}</Text>
-                ) : null}
-
-                {isImage ? (
-                  <AdminImage
-                    uri={resolveAssetUrl(message.mediaUrl)}
-                    style={styles.messageImage}
-                    resizeMode="cover"
-                    placeholderLabel="Image"
-                  />
-                ) : null}
-
-                <Text style={styles.messageTime}>
-                  {formatDate(message.createdAt)}
+                <Text style={styles.statusPillText}>
+                  {selectedSession.status}
                 </Text>
               </View>
-            );
-          })}
-        </ScrollView>
 
-        <View style={styles.composer}>
-          <View style={styles.composerTopRow}>
-            <TouchableOpacity
-              style={styles.composerIconBtn}
-              onPress={() => openAttachmentPicker("image")}
-            >
-              <Ionicons name="image-outline" size={18} color="#fff" />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.composerIconBtn}
-              onPress={() => openAttachmentPicker("file")}
-            >
-              <Ionicons name="attach-outline" size={18} color="#fff" />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.composerIconBtn,
-                isListening && styles.composerIconBtnActive,
-              ]}
-              onPress={startSpeechRecognition}
-            >
-              <Ionicons
-                name={isListening ? "mic" : "mic-outline"}
-                size={18}
-                color="#fff"
-              />
-            </TouchableOpacity>
-
-            <View style={styles.composerInputWrap}>
-              <TextInput
-                value={draftMessage}
-                onChangeText={setDraftMessage}
-                placeholder="Type a message..."
-                placeholderTextColor="#8B7AA8"
-                style={styles.composerInput}
-                multiline
-              />
+              <TouchableOpacity
+                style={[
+                  styles.endChatButton,
+                  isThreadClosed(selectedSession) &&
+                    styles.endChatButtonDisabled,
+                ]}
+                onPress={handleEndChat}
+                disabled={isThreadClosed(selectedSession) || sending}
+              >
+                <Text style={styles.endChatText}>End Chat</Text>
+              </TouchableOpacity>
             </View>
           </View>
 
-          {attachments.length > 0 ? (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.attachmentsRow}
-            >
-              {attachments.map((attachment) => (
-                <View key={attachment.id} style={styles.attachmentChip}>
-                  <Text style={styles.attachmentChipText} numberOfLines={1}>
-                    {attachment.kind === "image"
-                      ? `Image: ${attachment.name}`
-                      : attachment.name}
-                  </Text>
-                  <TouchableOpacity
-                    onPress={() => removeAttachment(attachment.id)}
-                  >
-                    <Ionicons name="close-circle" size={18} color="#fff" />
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </ScrollView>
-          ) : null}
-
-          <TouchableOpacity
-            style={[
-              styles.sendBtn,
-              (sending || isThreadClosed(selectedSession)) &&
-                styles.sendBtnDisabled,
-            ]}
-            onPress={handleSendMessage}
-            disabled={sending || isThreadClosed(selectedSession)}
-          >
-            <Ionicons name="send" size={18} color="#fff" />
-            <Text style={styles.sendText}>
-              {sending ? "Sending..." : "Send Message"}
+          <View style={styles.detailStrip}>
+            <Text style={styles.detailStripText}>
+              Requested: {formatDate(selectedSession.requestedAt)}
             </Text>
-          </TouchableOpacity>
+            <View style={styles.freeMinutesWrap}>
+              <Text style={styles.detailStripText}>
+                Free minutes: {freeMinutesDraft}
+              </Text>
+
+              <View style={styles.freeMinutesControls}>
+                <TouchableOpacity
+                  style={[
+                    styles.minuteBtn,
+                    styles.minuteBtnMinus,
+                    (freeMinutesSaving ||
+                      isThreadClosed(selectedSession) ||
+                      freeMinutesDraft <= 0) &&
+                      styles.minuteBtnDisabled,
+                  ]}
+                  onPress={() => adjustFreeMinutes(-1)}
+                  disabled={
+                    freeMinutesSaving ||
+                    isThreadClosed(selectedSession) ||
+                    freeMinutesDraft <= 0
+                  }
+                >
+                  <Text style={styles.minuteBtnText}>-</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.minuteBtn,
+                    styles.minuteBtnPlus,
+                    (freeMinutesSaving || isThreadClosed(selectedSession)) &&
+                      styles.minuteBtnDisabled,
+                  ]}
+                  onPress={() => adjustFreeMinutes(1)}
+                  disabled={freeMinutesSaving || isThreadClosed(selectedSession)}
+                >
+                  <Text style={styles.minuteBtnText}>+</Text>
+                </TouchableOpacity>
+              </View>
+
+              {freeMinutesSaving ? (
+                <Text style={styles.freeMinutesState}>Saving...</Text>
+              ) : freeMinutesError ? (
+                <Text style={styles.freeMinutesError}>
+                  {freeMinutesError}
+                </Text>
+              ) : null}
+            </View>
+
+            <Text style={styles.detailStripText}>
+              Host: {selectedSession.hostId || "N/A"}
+            </Text>
+          </View>
+
+          <ScrollView
+            ref={messagesScrollRef}
+            style={[
+              styles.messagesScroll,
+              !isDesktop
+                ? styles.messagesScrollMobile
+                : styles.messagesScrollDesktop,
+            ]}
+            contentContainerStyle={styles.messagesList}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+          >
+            {sessionMessagesLoading ? (
+              <View style={styles.statusBox}>
+                <ActivityIndicator color={Colors.primary} />
+                <Text style={styles.statusText}>Messages loading...</Text>
+              </View>
+            ) : null}
+
+            {sessionMessagesError ? (
+              <View style={styles.statusBox}>
+                <Ionicons
+                  name="alert-circle-outline"
+                  size={18}
+                  color={Colors.accent}
+                />
+                <Text style={styles.statusText}>{sessionMessagesError}</Text>
+              </View>
+            ) : null}
+
+            {sessionMessages.length === 0 && !sessionMessagesLoading ? (
+              <View style={styles.emptyThreadSmall}>
+                <Text style={styles.emptyThreadTitle}>No messages yet</Text>
+                <Text style={styles.emptyThreadText}>
+                  Is session ke liye abhi koi message nahi mila.
+                </Text>
+              </View>
+            ) : null}
+
+            {sessionMessages.map((message) => {
+              const isAdmin = message.senderRole === "admin";
+              const isImage =
+                message.type === "image" || Boolean(message.mediaUrl);
+
+              return (
+                <View
+                  key={message.id}
+                  style={[
+                    styles.messageBubble,
+                    isAdmin ? styles.adminBubble : styles.userBubble,
+                  ]}
+                >
+                  <Text style={styles.messageSender}>
+                    {message.senderName} - {message.senderRole}
+                  </Text>
+
+                  {message.text ? (
+                    <Text style={styles.messageText}>{message.text}</Text>
+                  ) : null}
+
+                  {isImage ? (
+                    <AdminImage
+                      uri={resolveAssetUrl(message.mediaUrl)}
+                      style={styles.messageImage}
+                      resizeMode="cover"
+                      placeholderLabel="Image"
+                    />
+                  ) : null}
+
+                  <Text style={styles.messageTime}>
+                    {formatDate(message.createdAt)}
+                  </Text>
+                </View>
+              );
+            })}
+          </ScrollView>
+
+          <View style={styles.composer}>
+            <View style={styles.composerTopRow}>
+              <TouchableOpacity
+                style={styles.composerIconBtn}
+                onPress={() => openAttachmentPicker("image")}
+              >
+                <Ionicons name="image-outline" size={18} color="#fff" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.composerIconBtn}
+                onPress={() => openAttachmentPicker("file")}
+              >
+                <Ionicons name="attach-outline" size={18} color="#fff" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.composerIconBtn,
+                  isListening && styles.composerIconBtnActive,
+                ]}
+                onPress={startSpeechRecognition}
+              >
+                <Ionicons
+                  name={isListening ? "mic" : "mic-outline"}
+                  size={18}
+                  color="#fff"
+                />
+              </TouchableOpacity>
+
+              <View style={styles.composerInputWrap}>
+              <TextInput
+                  value={draftMessage}
+                  onChangeText={setDraftMessage}
+                  placeholder="Type a message..."
+                  placeholderTextColor="#8B7AA8"
+                  style={styles.composerInput}
+                  multiline
+                  onFocus={scrollChatComposerIntoView}
+                />
+              </View>
+            </View>
+
+            {attachments.length > 0 ? (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.attachmentsRow}
+              >
+                {attachments.map((attachment) => (
+                  <View key={attachment.id} style={styles.attachmentChip}>
+                    <Text style={styles.attachmentChipText} numberOfLines={1}>
+                      {attachment.kind === "image"
+                        ? `Image: ${attachment.name}`
+                        : attachment.name}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => removeAttachment(attachment.id)}
+                    >
+                      <Ionicons name="close-circle" size={18} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </ScrollView>
+            ) : null}
+
+            <TouchableOpacity
+              style={[
+                styles.sendBtn,
+                (sending || isThreadClosed(selectedSession)) &&
+                  styles.sendBtnDisabled,
+              ]}
+              onPress={handleSendMessage}
+              disabled={sending || isThreadClosed(selectedSession)}
+            >
+              <Ionicons name="send" size={18} color="#fff" />
+              <Text style={styles.sendText}>
+                {sending ? "Sending..." : "Send Message"}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     );
   };
 
@@ -1246,7 +1340,16 @@ export default function ChatRequests() {
   };
 
   return (
-    <ScrollView showsVerticalScrollIndicator={false}>
+    <ScrollView
+      ref={pageScrollRef}
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
+      contentContainerStyle={[
+        styles.pageScrollContent,
+        !isDesktop && styles.pageScrollContentMobile,
+      ]}
+    >
       <View style={styles.headerBox}>
         <Text style={styles.title}>Chat Center</Text>
         <Text style={styles.subtitle}>
@@ -1461,6 +1564,12 @@ export default function ChatRequests() {
 }
 
 const styles = StyleSheet.create({
+  pageScrollContent: {
+    paddingBottom: 24,
+  },
+  pageScrollContentMobile: {
+    paddingBottom: 220,
+  },
   headerBox: {
     backgroundColor: "#151B2E",
     padding: 16,
@@ -1595,6 +1704,9 @@ const styles = StyleSheet.create({
   chatPaneMobile: {
     width: "100%",
   },
+  threadCardShell: {
+    width: "100%",
+  },
   sectionTitle: {
     color: "#FFFFFF",
     fontSize: 15,
@@ -1712,6 +1824,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#242B45",
     minHeight: 420,
+    overflow: "hidden",
   },
   threadHeader: {
     flexDirection: "row",
@@ -1812,8 +1925,14 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   messagesScroll: {
-    maxHeight: 360,
     marginTop: 12,
+    minHeight: 0,
+  },
+  messagesScrollDesktop: {
+    maxHeight: 360,
+  },
+  messagesScrollMobile: {
+    flex: 1,
   },
   messagesList: {
     gap: 8,
@@ -1894,11 +2013,14 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: "#242B45",
     paddingTop: 12,
+    paddingBottom: 4,
+    flexShrink: 0,
   },
   composerTopRow: {
     flexDirection: "row",
     gap: 8,
     alignItems: "flex-start",
+    flexShrink: 0,
   },
   composerIconBtn: {
     width: 40,
@@ -1913,6 +2035,7 @@ const styles = StyleSheet.create({
   },
   composerInputWrap: {
     flex: 1,
+    minWidth: 0,
     backgroundColor: "#0B1020",
     borderRadius: 14,
     borderWidth: 1,

@@ -1,6 +1,6 @@
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { API_BASE_URL, getApiBaseUrls } from "../config/api";
+import { bootstrapApiConfig, getApiBaseUrl, getApiBaseUrls } from "../config/api";
 
 let adminAuthTokenCache = "";
 let adminAuthTokenPromise = null;
@@ -78,6 +78,7 @@ function isNetworkFailure(error) {
 }
 
 async function requestWithFallback(config) {
+  await bootstrapApiConfig();
   const baseUrls = getApiBaseUrls();
   let lastError = null;
   let lastNetworkError = null;
@@ -149,7 +150,7 @@ export function resolveAssetUrl(url) {
   }
 
   const parsed = safeParseUrl(value);
-  const apiBase = safeParseUrl(API_BASE_URL);
+  const apiBase = safeParseUrl(getApiBaseUrl());
   const apiOrigin = apiBase?.origin || "";
   const fallbackProtocol =
     apiBase?.protocol ||

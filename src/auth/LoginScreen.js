@@ -1,5 +1,6 @@
 import React, { useRef, useState } from "react";
 import {
+  ActivityIndicator,
   View,
   Text,
   StyleSheet,
@@ -7,6 +8,7 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
+  Modal,
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
@@ -14,10 +16,18 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../context/AuthContext";
 import { Colors } from "../theme/colors";
 import { adminLogin } from "../admin/utils/adminApi";
-import { getApiBaseUrls } from "../config/api";
+import {
+  clearPreferredApiBaseUrl,
+  getApiBaseUrls,
+  getPreferredApiBaseUrl,
+  setPreferredApiBaseUrl,
+} from "../config/api";
 
 export default function LoginScreen({ navigation, route }) {
   const [showPassword, setShowPassword] = useState(false);
+  const [apiModalVisible, setApiModalVisible] = useState(false);
+  const [apiUrlInput, setApiUrlInput] = useState(getPreferredApiBaseUrl());
+  const [apiSaving, setApiSaving] = useState(false);
   const [form, setForm] = useState({
     email: "",
     password: "",
@@ -36,6 +46,73 @@ export default function LoginScreen({ navigation, route }) {
 
   const handleChange = (key, value) => {
     setForm({ ...form, [key]: value });
+  };
+
+  const openApiSettings = () => {
+    setApiUrlInput(getPreferredApiBaseUrl());
+    setApiModalVisible(true);
+  };
+
+  const closeApiSettings = () => {
+    if (apiSaving) {
+      return;
+    }
+
+    setApiModalVisible(false);
+  };
+
+  const saveApiUrl = async () => {
+    const nextUrl = apiUrlInput.trim();
+
+    if (!nextUrl) {
+      Alert.alert(
+        "Server URL required",
+        "Backend URL khali nahi chhod sakte. Example: https://api.yourdomain.com"
+      );
+      return;
+    }
+
+    setApiSaving(true);
+
+    try {
+      const savedUrl = await setPreferredApiBaseUrl(nextUrl);
+      setApiModalVisible(false);
+      Alert.alert(
+        "Server updated",
+        `Admin app ab is backend ko use karega:\n${savedUrl}`
+      );
+    } catch (error) {
+      Alert.alert(
+        "Error",
+        error?.message || "Server URL save nahi ho paya."
+      );
+    } finally {
+      setApiSaving(false);
+    }
+  };
+
+  const clearApiUrl = async () => {
+    if (apiSaving) {
+      return;
+    }
+
+    setApiSaving(true);
+
+    try {
+      await clearPreferredApiBaseUrl();
+      setApiUrlInput(getPreferredApiBaseUrl());
+      Alert.alert(
+        "Server reset",
+        "Saved backend URL hata diya gaya hai. Ab app default configured URLs try karega."
+      );
+    } catch (error) {
+      Alert.alert(
+        "Error",
+        error?.message || "Server URL clear nahi ho paya."
+      );
+    } finally {
+      setApiSaving(false);
+    }
   };
 
   React.useEffect(() => {
@@ -185,6 +262,21 @@ export default function LoginScreen({ navigation, route }) {
                 Login to your EvDivine account
               </Text>
 
+              <View style={styles.serverRow}>
+                <View style={styles.serverTextWrap}>
+                  <Text style={styles.serverLabel}>Backend URL</Text>
+                  <Text style={styles.serverValue} numberOfLines={1}>
+                    {getPreferredApiBaseUrl()}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.serverBtn}
+                  onPress={openApiSettings}
+                >
+                  <Text style={styles.serverBtnText}>Change</Text>
+                </TouchableOpacity>
+              </View>
+
               {successMessage ? (
                 <Text style={styles.successText}>{successMessage}</Text>
               ) : null}
@@ -266,6 +358,69 @@ export default function LoginScreen({ navigation, route }) {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <Modal
+        visible={apiModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeApiSettings}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Backend URL</Text>
+            <Text style={styles.modalSubtitle}>
+              Phone par app chalane ke liye backend ka public URL ya same Wi-Fi
+              IP yahan set karo.
+            </Text>
+
+            <Text style={styles.modalLabel}>API URL</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={apiUrlInput}
+              onChangeText={setApiUrlInput}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+              placeholder="https://api.yourdomain.com"
+              placeholderTextColor="#8F8AA8"
+            />
+
+            <Text style={styles.modalHint}>
+              Example: http://192.168.1.41:5000 ya https://api.domain.com
+            </Text>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalSecondaryBtn]}
+                onPress={clearApiUrl}
+                disabled={apiSaving}
+              >
+                <Text style={styles.modalSecondaryBtnText}>Reset</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalPrimaryBtn]}
+                onPress={saveApiUrl}
+                disabled={apiSaving}
+              >
+                {apiSaving ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.modalPrimaryBtnText}>Save</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={styles.modalCloseBtn}
+              onPress={closeApiSettings}
+              disabled={apiSaving}
+            >
+              <Text style={styles.modalCloseText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -351,6 +506,50 @@ const styles = StyleSheet.create({
     marginTop: 5,
     marginBottom: 22,
   },
+  serverRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: "rgba(255,255,255,0.14)",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 16,
+  },
+  serverTextWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  serverLabel: {
+    color: "#E9D5FF",
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  serverValue: {
+    color: "#FFF7ED",
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 4,
+  },
+  serverBtn: {
+    paddingHorizontal: 14,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: "rgba(192, 132, 252, 0.22)",
+    borderWidth: 1,
+    borderColor: "rgba(216, 180, 254, 0.34)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  serverBtnText: {
+    color: "#F5D0FE",
+    fontSize: 12,
+    fontWeight: "900",
+  },
   successText: {
     color: "#059669",
     fontSize: 13,
@@ -409,6 +608,95 @@ const styles = StyleSheet.create({
   },
   linkText: {
     color: Colors.primaryLight,
+    fontWeight: "900",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(7, 3, 20, 0.78)",
+    justifyContent: "center",
+    padding: 18,
+  },
+  modalCard: {
+    backgroundColor: "#161021",
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    padding: 18,
+  },
+  modalTitle: {
+    color: "#fff",
+    fontSize: 20,
+    fontWeight: "900",
+  },
+  modalSubtitle: {
+    color: "#C9B6FF",
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 8,
+    marginBottom: 14,
+  },
+  modalLabel: {
+    color: "#F5D0FE",
+    fontSize: 12,
+    fontWeight: "800",
+    marginBottom: 8,
+  },
+  modalInput: {
+    minHeight: 50,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+    backgroundColor: "rgba(255,255,255,0.06)",
+    color: "#fff",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 13,
+  },
+  modalHint: {
+    color: "#B8A6E8",
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 10,
+  },
+  modalActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 18,
+  },
+  modalBtn: {
+    flex: 1,
+    height: 46,
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalSecondaryBtn: {
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  modalSecondaryBtnText: {
+    color: "#E9D5FF",
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  modalPrimaryBtn: {
+    backgroundColor: Colors.primary,
+  },
+  modalPrimaryBtnText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  modalCloseBtn: {
+    alignSelf: "center",
+    marginTop: 14,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+  },
+  modalCloseText: {
+    color: "#C4B5FD",
+    fontSize: 13,
     fontWeight: "900",
   },
 });

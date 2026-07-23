@@ -52,6 +52,15 @@ function normalizePageKey(value) {
   return slugify(value || "");
 }
 
+function getPageKeyCandidates(page) {
+  const title = String(page?.title || "").trim();
+  const pageKey = String(page?.pageKey || page?.page || "").trim();
+  const slug = normalizePageKey(title || pageKey);
+  const rawPage = String(page?.page || "").trim();
+
+  return [...new Set([pageKey, rawPage, slug, title].filter(Boolean))];
+}
+
 function makePageRecord(page) {
   const pageKey = page.pageKey || page.page || normalizePageKey(page.title);
 
@@ -235,31 +244,40 @@ export default function PageContent() {
   };
 
   const loadPageByKey = async (page) => {
-    const pageKey =
-      page?.pageKey || page?.page || normalizePageKey(page?.title);
+    const candidates = getPageKeyCandidates(page);
 
-    if (!pageKey) {
+    if (candidates.length === 0) {
       openPage(page);
       return;
     }
 
-    try {
-      const response = await adminGetPageContentByKey(pageKey);
-      const rawRecord = normalizePageContentRecord(response);
-      const record = makePageRecord(rawRecord || page);
+    let lastError = null;
 
-      openPage(
-        record?.pageKey
-          ? record
-          : {
-              ...page,
-              ...record,
-              pageKey,
-              page: record?.page || pageKey,
-            }
-      );
-    } catch (err) {
+    for (const candidate of candidates) {
+      try {
+        const response = await adminGetPageContentByKey(candidate);
+        const rawRecord = normalizePageContentRecord(response);
+        const record = makePageRecord(rawRecord || page);
+
+        openPage(
+          record?.pageKey
+            ? record
+            : {
+                ...page,
+                ...record,
+                pageKey: candidate,
+                page: record?.page || candidate,
+              }
+        );
+        return;
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    if (lastError) {
       openPage(page);
+      return;
     }
   };
 
@@ -292,21 +310,24 @@ export default function PageContent() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await adminSavePageContent(
-        selectedPage.pageKey || normalizePageKey(selectedPage.title),
-        {
-          pageKey: selectedPage.pageKey || normalizePageKey(selectedPage.title),
-          page:
-            selectedPage.page ||
-            selectedPage.pageKey ||
-            normalizePageKey(selectedPage.title),
-          isActive:
-            selectedPage.isActive !== undefined
-              ? Boolean(selectedPage.isActive)
-              : true,
-          ...form,
-        }
-      );
+      const candidates = getPageKeyCandidates(selectedPage);
+      const pageKey = candidates[0] || normalizePageKey(selectedPage.title);
+
+      await adminSavePageContent(pageKey, {
+        pageKey,
+        page:
+          selectedPage.page ||
+          selectedPage.pageKey ||
+          normalizePageKey(selectedPage.title),
+        slug: pageKey,
+        title: form.title,
+        name: form.title,
+        isActive:
+          selectedPage.isActive !== undefined
+            ? Boolean(selectedPage.isActive)
+            : true,
+        ...form,
+      });
       Alert.alert(
         "Success",
         `${selectedPage.title} content saved successfully`

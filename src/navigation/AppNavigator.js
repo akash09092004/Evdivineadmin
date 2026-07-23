@@ -60,15 +60,17 @@ export default function AppNavigator() {
           />
         </>
       ) : (
-        <Stack.Screen
-          name="AdminLogin"
-          component={LoginScreen}
-          initialParams={{
-            redirectTo: "AdminHome",
-            successMessage: "Please login to open Admin Dashboard.",
-            requireAdmin: true,
-          }}
-        />
+        <>
+          <Stack.Screen
+            name="AdminLogin"
+            component={LoginScreen}
+            initialParams={{
+              redirectTo: "AdminHome",
+              successMessage: "Please login to open Admin Dashboard.",
+              requireAdmin: true,
+            }}
+          />
+        </>
       )}
     </Stack.Navigator>
   );

@@ -9,6 +9,67 @@ function toText(value) {
   return String(value).trim();
 }
 
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function findListCandidate(value, depth = 0) {
+  if (!value || depth > 4) {
+    return [];
+  }
+
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (!isPlainObject(value)) {
+    return [];
+  }
+
+  const listKeys = [
+    "historyNotes",
+    "notes",
+    "history_notes",
+    "bookingHistory",
+    "history",
+    "data",
+    "items",
+    "results",
+    "list",
+    "rows",
+  ];
+
+  for (const key of listKeys) {
+    const nested = value[key];
+
+    if (Array.isArray(nested)) {
+      return nested;
+    }
+
+    if (isPlainObject(nested)) {
+      const nestedList = findListCandidate(nested, depth + 1);
+      if (nestedList.length > 0) {
+        return nestedList;
+      }
+    }
+  }
+
+  for (const nested of Object.values(value)) {
+    if (Array.isArray(nested)) {
+      return nested;
+    }
+
+    if (isPlainObject(nested)) {
+      const nestedList = findListCandidate(nested, depth + 1);
+      if (nestedList.length > 0) {
+        return nestedList;
+      }
+    }
+  }
+
+  return [];
+}
+
 function formatDate(value) {
   if (!value) return "N/A";
 
@@ -57,10 +118,11 @@ function normalizeHistoryNote(item) {
     date: formatDate(
       source?.date ||
         source?.createdAt ||
-        source?.updatedAt ||
-        source?.timestamp ||
-        source?.noteDate
+      source?.updatedAt ||
+      source?.timestamp ||
+      source?.noteDate
     ),
+    raw: source,
   };
 }
 
@@ -90,21 +152,31 @@ export default function HistoryNotes() {
         if (!mounted) return;
 
         const source = normalizeObject(data);
-        const list = normalizeList(source, [
+        const list = findListCandidate(source);
+        const fallbackList = list.length > 0 ? list : normalizeList(source, [
           "historyNotes",
           "notes",
           "data",
           "items",
           "results",
+          "list",
+          "rows",
         ]);
 
-        const nextNotes = list.map(normalizeHistoryNote);
+        const nextNotes = (fallbackList.length > 0 ? fallbackList : []).map(
+          normalizeHistoryNote
+        );
+        nextNotes.sort(
+          (a, b) =>
+            new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()
+        );
         setNotes(nextNotes);
 
         if (__DEV__) {
           console.log("[HistoryNotes] loaded", {
             count: nextNotes.length,
             sample: nextNotes[0] || null,
+            responseKeys: isPlainObject(source) ? Object.keys(source) : [],
           });
         }
       } catch (err) {

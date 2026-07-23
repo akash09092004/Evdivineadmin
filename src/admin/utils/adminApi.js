@@ -610,11 +610,26 @@ async function sendChatMessageByPath(path, id, payload, config = {}) {
 }
 
 async function endChatThreadByPath(path, id, config = {}) {
-  return API.request({
-    url: `${path}/${id}/end`,
-    method: "patch",
-    ...config,
-  }).then((response) => response.data);
+  const payload = {
+    status: "ended",
+    chatStatus: "ended",
+    chatAccessStatus: "ended",
+    active: false,
+    isActive: false,
+    endedAt: new Date().toISOString(),
+  };
+
+  return requestWithMethodsAndEndpoints(
+    ["patch", "put", "post"],
+    [
+      `${path}/${id}/end`,
+      `${path}/${id}/close`,
+      `${path}/${id}/status`,
+      `${path}/${id}`,
+    ],
+    payload,
+    config
+  );
 }
 
 export async function adminGetChatSessionMessages(sessionId, config = {}) {
@@ -974,16 +989,35 @@ export async function adminGetPageContentByKey(pageKey, config = {}) {
   );
 }
 
-export async function adminPutPageContent(pageKey, payload, config = {}) {
+function buildPageContentPayload(pageKey, payload = {}) {
   const safePageKey = String(pageKey || "").trim();
-  const nextPayload = {
+  const title = String(payload?.title || payload?.name || "").trim();
+  const keywords = Array.isArray(payload?.keywords)
+    ? payload.keywords.join(", ")
+    : String(payload?.keywords || "").trim();
+
+  return {
     ...payload,
     pageKey: payload?.pageKey || safePageKey,
     page: payload?.page || safePageKey,
+    slug: payload?.slug || safePageKey,
+    key: payload?.key || safePageKey,
+    title: title || payload?.pageTitle || safePageKey,
+    name: payload?.name || title || payload?.pageTitle || safePageKey,
+    keywords,
+    description: String(payload?.description || "").trim(),
+    content: String(payload?.content || ""),
+    isActive:
+      payload?.isActive !== undefined ? Boolean(payload.isActive) : true,
   };
+}
+
+export async function adminPutPageContent(pageKey, payload, config = {}) {
+  const safePageKey = String(pageKey || "").trim();
+  const nextPayload = buildPageContentPayload(safePageKey, payload);
 
   return requestWithMethodsAndEndpoints(
-    ["put"],
+    ["put", "patch", "post"],
     [
       `/admin/page-content/${safePageKey}`,
       `/admin/content/pages/${safePageKey}`,
@@ -997,20 +1031,17 @@ export async function adminSavePageContent(pageKey, payload, config = {}) {
   try {
     return await adminPutPageContent(pageKey, payload, config);
   } catch (error) {
-    if (error?.response?.status !== 404 && error?.response?.status !== 405) {
+    const updateStatus = error?.response?.status;
+    if (updateStatus && ![404, 405, 500].includes(updateStatus)) {
       throw error;
     }
   }
 
   const safePageKey = String(pageKey || "").trim();
-  const nextPayload = {
-    ...payload,
-    pageKey: payload?.pageKey || safePageKey,
-    page: payload?.page || safePageKey,
-  };
+  const nextPayload = buildPageContentPayload(safePageKey, payload);
 
   return requestWithMethodsAndEndpoints(
-    ["post"],
+    ["post", "put", "patch"],
     ["/admin/page-content", "/admin/content/pages"],
     nextPayload,
     config

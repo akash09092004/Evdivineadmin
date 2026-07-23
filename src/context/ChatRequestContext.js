@@ -218,7 +218,7 @@ export function ChatRequestProvider({ children }) {
     socket.on("connect_error", (error) => {
       console.error("[Socket] connect_error", error);
       setConnectionError(
-        error?.message || "Socket connection failed. Please refresh."
+        "Socket connection failed. Backend socket server ya network check karo."
       );
     });
 
