@@ -7,7 +7,8 @@
     },
     "android": {
       "package": "com.akashgupta123.evdivineapp",
-      "usesCleartextTraffic": true
+      "usesCleartextTraffic": true,
+      "softwareKeyboardLayoutMode": "resize"
     },
     "ios": {
       "bundleIdentifier": "com.akashgupta123.evdivineapp",

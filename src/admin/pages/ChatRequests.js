@@ -13,6 +13,7 @@ import {
   useWindowDimensions,
   Platform,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import SearchBar from "../components/SearchBar";
 import AdminImage from "../components/AdminImage";
@@ -211,6 +212,7 @@ function buildMessagePayload(thread, selectedSession, draftMessage, attachment) 
 
 export default function ChatRequests() {
   const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const isDesktop = width >= 1100;
   const mobileChatHeight = Math.min(
     560,
@@ -385,6 +387,8 @@ export default function ChatRequests() {
   ]);
 
   const activeItems = activeTab === "sessions" ? sessions : requests;
+  const pageBottomPadding =
+    24 + insets.bottom + (!isDesktop && activeTab === "sessions" ? 220 : 0);
 
   const filteredItems = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -959,15 +963,19 @@ export default function ChatRequests() {
     }
 
     return (
-      <KeyboardAvoidingView
-        style={styles.threadCardShell}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 100 : 0}
+      <View
+        style={[
+          styles.threadCardShell,
+          !isDesktop && { minHeight: mobileChatHeight },
+        ]}
       >
         <View
           style={[
             styles.threadCard,
-            !isDesktop && { height: mobileChatHeight },
+            !isDesktop && {
+              minHeight: mobileChatHeight,
+              maxHeight: mobileChatHeight + 80,
+            },
           ]}
         >
           <View style={styles.threadHeader}>
@@ -1226,7 +1234,7 @@ export default function ChatRequests() {
             </TouchableOpacity>
           </View>
         </View>
-      </KeyboardAvoidingView>
+      </View>
     );
   };
 
@@ -1340,231 +1348,246 @@ export default function ChatRequests() {
   };
 
   return (
-    <ScrollView
-      ref={pageScrollRef}
-      showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="on-drag"
-      contentContainerStyle={[
-        styles.pageScrollContent,
-        !isDesktop && styles.pageScrollContentMobile,
-      ]}
+    <KeyboardAvoidingView
+      style={styles.screen}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}
     >
-      <View style={styles.headerBox}>
-        <Text style={styles.title}>Chat Center</Text>
-        <Text style={styles.subtitle}>
-          Proper chat page with session list, request rejection, messages and
-          image sending
-        </Text>
-        {__DEV__ ? (
-          <View style={styles.devToolsRow}>
-            <TouchableOpacity style={styles.devToolBtn} onPress={startRingtone}>
-              <Text style={styles.devToolText}>Start Test Ringtone</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.devToolBtnAlt}
-              onPress={stopRingtone}
-            >
-              <Text style={styles.devToolText}>Stop Test Ringtone</Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
-      </View>
-
-      <View style={styles.tabsRow}>
-        {TABS.map((tab) => {
-          const active = activeTab === tab.key;
-
-          return (
-            <TouchableOpacity
-              key={tab.key}
-              style={[styles.tabBtn, active && styles.tabBtnActive]}
-              onPress={() => setActiveTab(tab.key)}
-            >
-              <Text style={[styles.tabText, active && styles.tabTextActive]}>
-                {tab.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-
-      <View style={styles.summaryRow}>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryValue}>{summary.total}</Text>
-          <Text style={styles.summaryLabel}>Total</Text>
-        </View>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryValue}>{summary.pending}</Text>
-          <Text style={styles.summaryLabel}>Pending</Text>
-        </View>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryValue}>{summary.approved}</Text>
-          <Text style={styles.summaryLabel}>Approved</Text>
-        </View>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryValue}>{summary.rejected}</Text>
-          <Text style={styles.summaryLabel}>Rejected</Text>
-        </View>
-      </View>
-
-      <SearchBar
-        value={search}
-        onChangeText={setSearch}
-        placeholder={`Search ${activeTab}...`}
-      />
-
-      {(activeTab === "sessions" ? sessionsLoading : requestsLoading) ? (
-        <View style={styles.statusBox}>
-          <ActivityIndicator color={Colors.primary} />
-          <Text style={styles.statusText}>Loading {activeTab}...</Text>
-        </View>
-      ) : null}
-
-      {(activeTab === "sessions" ? sessionsError : requestsError) ? (
-        <View style={styles.statusBox}>
-          <Ionicons
-            name="alert-circle-outline"
-            size={18}
-            color={Colors.accent}
-          />
-          <Text style={styles.statusText}>
-            {activeTab === "sessions" ? sessionsError : requestsError}
-          </Text>
-        </View>
-      ) : null}
-
-      <View
-        style={[
-          styles.mainGrid,
-          { flexDirection: isDesktop ? "row" : "column" },
+      <ScrollView
+        ref={pageScrollRef}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        contentContainerStyle={[
+          styles.pageScrollContent,
+          !isDesktop && styles.pageScrollContentMobile,
+          { paddingBottom: pageBottomPadding },
         ]}
       >
-        <View style={[styles.listPane, { width: isDesktop ? 380 : "100%" }]}>
-          <Text style={styles.sectionTitle}>
-            {activeTab === "sessions" ? "Sessions" : "Requests"}
+        <View style={styles.headerBox}>
+          <Text style={styles.title}>Chat Center</Text>
+          <Text style={styles.subtitle}>
+            Proper chat page with session list, request rejection, messages and
+            image sending
           </Text>
-          {renderList()}
-        </View>
+          {__DEV__ ? (
+            <View style={styles.devToolsRow}>
+              <TouchableOpacity
+                style={styles.devToolBtn}
+                onPress={startRingtone}
+              >
+                <Text style={styles.devToolText}>Start Test Ringtone</Text>
+              </TouchableOpacity>
 
-        <View style={[styles.chatPane, !isDesktop && styles.chatPaneMobile]}>
-          {activeTab === "sessions" ? renderMessages() : null}
-
-          {activeTab === "requests" ? (
-            <View style={styles.requestHintCard}>
-              <Ionicons
-                name="information-circle-outline"
-                size={18}
-                color={Colors.primaryLight}
-              />
-              <Text style={styles.requestHintText}>
-                Kisi request ko tap karke reject modal open karo. Session start
-                hone ke baad wo chat panel me dikhega.
-              </Text>
+              <TouchableOpacity
+                style={styles.devToolBtnAlt}
+                onPress={stopRingtone}
+              >
+                <Text style={styles.devToolText}>Stop Test Ringtone</Text>
+              </TouchableOpacity>
             </View>
           ) : null}
         </View>
-      </View>
 
-      <Modal
-        visible={Boolean(selectedRequest)}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setSelectedRequest(null)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            {selectedRequest ? (
-              <>
-                <View style={styles.modalHeader}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.modalTitle}>Reject Request</Text>
-                    <Text style={styles.modalSubtitle}>
-                      {selectedRequest.name} | {selectedRequest.status}
-                    </Text>
-                  </View>
+        <View style={styles.tabsRow}>
+          {TABS.map((tab) => {
+            const active = activeTab === tab.key;
 
-                  <TouchableOpacity
-                    onPress={() => setSelectedRequest(null)}
-                    style={styles.closeBtn}
-                  >
-                    <Ionicons name="close" size={20} color="#fff" />
-                  </TouchableOpacity>
-                </View>
+            return (
+              <TouchableOpacity
+                key={tab.key}
+                style={[styles.tabBtn, active && styles.tabBtnActive]}
+                onPress={() => setActiveTab(tab.key)}
+              >
+                <Text style={[styles.tabText, active && styles.tabTextActive]}>
+                  {tab.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
 
-                <View style={styles.detailBox}>
-                  <Text style={styles.detailLabel}>Request Info</Text>
-                  <Text style={styles.detailText}>{selectedRequest.email}</Text>
-                  <Text style={styles.detailMeta}>
-                    Phone: {selectedRequest.phone}
-                  </Text>
-                  <Text style={styles.detailMeta}>
-                    Requested At: {formatDate(selectedRequest.requestedAt)}
-                  </Text>
-                  <Text style={styles.detailMeta}>
-                    Created At: {formatDate(selectedRequest.createdAt)}
-                  </Text>
-                  <Text style={styles.detailMeta}>
-                    Updated At: {formatDate(selectedRequest.updatedAt)}
-                  </Text>
-                </View>
+        <View style={styles.summaryRow}>
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryValue}>{summary.total}</Text>
+            <Text style={styles.summaryLabel}>Total</Text>
+          </View>
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryValue}>{summary.pending}</Text>
+            <Text style={styles.summaryLabel}>Pending</Text>
+          </View>
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryValue}>{summary.approved}</Text>
+            <Text style={styles.summaryLabel}>Approved</Text>
+          </View>
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryValue}>{summary.rejected}</Text>
+            <Text style={styles.summaryLabel}>Rejected</Text>
+          </View>
+        </View>
 
-                <View style={styles.actionRow}>
-                  <TouchableOpacity
-                    style={[styles.actionBtn, styles.approveBtn]}
-                    onPress={() => handleApproveRequest()}
-                    disabled={approving || rejecting}
-                  >
-                    <Text style={styles.actionBtnText}>
-                      {approving ? "Approving..." : "Approve"}
-                    </Text>
-                  </TouchableOpacity>
+        <SearchBar
+          value={search}
+          onChangeText={setSearch}
+          placeholder={`Search ${activeTab}...`}
+        />
 
-                  <TouchableOpacity
-                    style={[styles.actionBtn, styles.rejectBtn]}
-                    onPress={handleRejectRequest}
-                    disabled={rejecting || approving}
-                  >
-                    <Text style={styles.actionBtnText}>
-                      {rejecting ? "Rejecting..." : "Reject"}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
+        {(activeTab === "sessions" ? sessionsLoading : requestsLoading) ? (
+          <View style={styles.statusBox}>
+            <ActivityIndicator color={Colors.primary} />
+            <Text style={styles.statusText}>Loading {activeTab}...</Text>
+          </View>
+        ) : null}
 
-                <Text style={styles.label}>Rejection Reason</Text>
-                <TextInput
-                  style={styles.rejectInput}
-                  value={rejectReason}
-                  onChangeText={setRejectReason}
-                  placeholder="Not available right now"
-                  placeholderTextColor="#8B7AA8"
-                  multiline
-                  editable={!approving && !rejecting}
+        {(activeTab === "sessions" ? sessionsError : requestsError) ? (
+          <View style={styles.statusBox}>
+            <Ionicons
+              name="alert-circle-outline"
+              size={18}
+              color={Colors.accent}
+            />
+            <Text style={styles.statusText}>
+              {activeTab === "sessions" ? sessionsError : requestsError}
+            </Text>
+          </View>
+        ) : null}
+
+        <View
+          style={[
+            styles.mainGrid,
+            { flexDirection: isDesktop ? "row" : "column" },
+          ]}
+        >
+          <View style={[styles.listPane, { width: isDesktop ? 380 : "100%" }]}>
+            <Text style={styles.sectionTitle}>
+              {activeTab === "sessions" ? "Sessions" : "Requests"}
+            </Text>
+            {renderList()}
+          </View>
+
+          <View style={[styles.chatPane, !isDesktop && styles.chatPaneMobile]}>
+            {activeTab === "sessions" ? renderMessages() : null}
+
+            {activeTab === "requests" ? (
+              <View style={styles.requestHintCard}>
+                <Ionicons
+                  name="information-circle-outline"
+                  size={18}
+                  color={Colors.primaryLight}
                 />
-
-                <TouchableOpacity
-                  style={[
-                    styles.actionBtn,
-                    styles.closeActionBtn,
-                    { marginTop: 12 },
-                  ]}
-                  onPress={() => setSelectedRequest(null)}
-                  disabled={rejecting || approving}
-                >
-                  <Text style={styles.actionBtnText}>Cancel</Text>
-                </TouchableOpacity>
-              </>
+                <Text style={styles.requestHintText}>
+                  Kisi request ko tap karke reject modal open karo. Session start
+                  hone ke baad wo chat panel me dikhega.
+                </Text>
+              </View>
             ) : null}
           </View>
         </View>
-      </Modal>
-    </ScrollView>
+
+        <Modal
+          visible={Boolean(selectedRequest)}
+          animationType="slide"
+          transparent
+          onRequestClose={() => setSelectedRequest(null)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalCard}>
+              {selectedRequest ? (
+                <>
+                  <View style={styles.modalHeader}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.modalTitle}>Reject Request</Text>
+                      <Text style={styles.modalSubtitle}>
+                        {selectedRequest.name} | {selectedRequest.status}
+                      </Text>
+                    </View>
+
+                    <TouchableOpacity
+                      onPress={() => setSelectedRequest(null)}
+                      style={styles.closeBtn}
+                    >
+                      <Ionicons name="close" size={20} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.detailBox}>
+                    <Text style={styles.detailLabel}>Request Info</Text>
+                    <Text style={styles.detailText}>{selectedRequest.email}</Text>
+                    <Text style={styles.detailMeta}>
+                      Phone: {selectedRequest.phone}
+                    </Text>
+                    <Text style={styles.detailMeta}>
+                      Requested At: {formatDate(selectedRequest.requestedAt)}
+                    </Text>
+                    <Text style={styles.detailMeta}>
+                      Created At: {formatDate(selectedRequest.createdAt)}
+                    </Text>
+                    <Text style={styles.detailMeta}>
+                      Updated At: {formatDate(selectedRequest.updatedAt)}
+                    </Text>
+                  </View>
+
+                  <View style={styles.actionRow}>
+                    <TouchableOpacity
+                      style={[styles.actionBtn, styles.approveBtn]}
+                      onPress={() => handleApproveRequest()}
+                      disabled={approving || rejecting}
+                    >
+                      <Text style={styles.actionBtnText}>
+                        {approving ? "Approving..." : "Approve"}
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.actionBtn, styles.rejectBtn]}
+                      onPress={handleRejectRequest}
+                      disabled={rejecting || approving}
+                    >
+                      <Text style={styles.actionBtnText}>
+                        {rejecting ? "Rejecting..." : "Reject"}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <Text style={styles.label}>Rejection Reason</Text>
+                  <TextInput
+                    style={styles.rejectInput}
+                    value={rejectReason}
+                    onChangeText={setRejectReason}
+                    placeholder="Not available right now"
+                    placeholderTextColor="#8B7AA8"
+                    multiline
+                    editable={!approving && !rejecting}
+                  />
+
+                  <TouchableOpacity
+                    style={[
+                      styles.actionBtn,
+                      styles.closeActionBtn,
+                      { marginTop: 12 },
+                    ]}
+                    onPress={() => setSelectedRequest(null)}
+                    disabled={rejecting || approving}
+                  >
+                    <Text style={styles.actionBtnText}>Cancel</Text>
+                  </TouchableOpacity>
+                </>
+              ) : null}
+            </View>
+          </View>
+        </Modal>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: "#12092E",
+  },
   pageScrollContent: {
+    flexGrow: 1,
     paddingBottom: 24,
   },
   pageScrollContentMobile: {
@@ -1706,6 +1729,7 @@ const styles = StyleSheet.create({
   },
   threadCardShell: {
     width: "100%",
+    flex: 1,
   },
   sectionTitle: {
     color: "#FFFFFF",
@@ -1824,6 +1848,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#242B45",
     minHeight: 420,
+    flex: 1,
     overflow: "hidden",
   },
   threadHeader: {
@@ -1927,6 +1952,7 @@ const styles = StyleSheet.create({
   messagesScroll: {
     marginTop: 12,
     minHeight: 0,
+    flex: 1,
   },
   messagesScrollDesktop: {
     maxHeight: 360,

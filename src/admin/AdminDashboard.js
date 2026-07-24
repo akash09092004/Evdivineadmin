@@ -26,6 +26,7 @@ import RefundAmount from "./pages/RefundAmount";
 import Coupons from "./pages/Coupons";
 import RechargePlans from "./pages/RechargePlans";
 import SlotPlans from "./pages/SlotPlans";
+import SlotBookings from "./pages/SlotBookings";
 import Availability from "./pages/Availability";
 import Leaves from "./pages/Leaves";
 import BlockedTimes from "./pages/BlockedTimes";
@@ -350,6 +351,7 @@ export default function AdminDashboard({ navigation, route }) {
     if (currentScreen === "Coupons") return <Coupons />;
     if (currentScreen === "RechargePlans") return <RechargePlans />;
     if (currentScreen === "SlotPlans") return <SlotPlans />;
+    if (currentScreen === "SlotBookings") return <SlotBookings />;
     if (currentScreen === "Availability") return <Availability />;
     if (currentScreen === "Leaves") return <Leaves />;
     if (currentScreen === "BlockedTimes") return <BlockedTimes />;

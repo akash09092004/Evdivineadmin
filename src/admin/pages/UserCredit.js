@@ -17,6 +17,8 @@ import DataTable from "../components/DataTable";
 import {
   adminAddUserCredit,
   adminGet,
+  adminGetBookings,
+  adminGetUpcomingBookings,
   adminGetUserCredits,
   normalizeList,
 } from "../utils/adminApi";
@@ -223,6 +225,7 @@ function normalizeChatHistoryRecord(item, index = 0) {
       item?.readerName || item?.adminName || item?.expertName || item?.hostName,
       "N/A"
     ),
+    service: toText(item?.service, "N/A"),
     status: toText(item?.status, "N/A"),
     amount:
       item?.amount ??
@@ -324,6 +327,69 @@ function normalizeSessionHistoryRecord(session, user, index = 0) {
   );
 }
 
+function normalizeBookingHistoryRecord(booking, user, index = 0) {
+  const startedAt =
+    booking?.startAt ||
+    booking?.bookingStartAt ||
+    booking?.scheduledAt ||
+    booking?.createdAt ||
+    "";
+  const endedAt = booking?.endAt || booking?.bookingEndAt || booking?.finishedAt || "";
+  const service = booking?.service || booking?.package || booking?.plan || "Booking";
+
+  return normalizeChatHistoryRecord(
+    {
+      id: booking?._id || booking?.id || booking?.bookingId || `booking-${index + 1}`,
+      kind: "booking",
+      userName:
+        user?.userName ||
+        booking?.userName ||
+        booking?.customerName ||
+        booking?.name ||
+        "N/A",
+      userId:
+        booking?.userId ||
+        booking?.customerId ||
+        booking?.ownerId ||
+        user?.userId ||
+        "N/A",
+      readerName:
+        booking?.advisorName ||
+        booking?.consultantName ||
+        booking?.adminName ||
+        booking?.readerName ||
+        "N/A",
+      status: booking?.status || booking?.bookingStatus || booking?.state || "N/A",
+      amount:
+        booking?.amount ??
+        booking?.price ??
+        booking?.bookingAmount ??
+        booking?.totalAmount ??
+        null,
+      transactionId:
+        booking?.bookingId ||
+        booking?.referenceId ||
+        booking?.reference ||
+        booking?._id ||
+        booking?.id ||
+        "N/A",
+      transactionDetail: `${service}${booking?.durationMinutes ? ` - ${booking.durationMinutes} min` : ""}`,
+      startedAt,
+      endedAt,
+      date: startedAt,
+      source: "booking",
+      service,
+      durationMinutes:
+        booking?.durationMinutes ??
+        booking?.duration ??
+        booking?.slotMinutes ??
+        booking?.minutes ??
+        null,
+    },
+    index
+  );
+}
+
 function normalizeCreditHistoryRecord(record, user, index = 0) {
   const creditAmount = pickFirst(
     record?.credit,
@@ -390,20 +456,93 @@ function getIdentityValues(user) {
   return Array.from(
     new Set(
       [
+        user?.id,
+        user?.rawId,
         user?.userId,
         user?.raw?.user?._id,
+        user?.raw?.user?.id,
         user?.raw?.userId,
         user?.raw?.owner,
         user?.raw?.customer,
         user?.raw?.customerId,
         user?.raw?.ownerId,
-        user?.raw?.user?._id,
-        user?.raw?.user?.id,
+        user?.raw?.email,
+        user?.raw?.name,
+        user?.raw?.fullName,
+        user?.raw?.userName,
+        user?.raw?.phone,
+        user?.email,
+        user?.name,
+        user?.fullName,
+        user?.userName,
+        user?.phone,
       ]
         .filter(Boolean)
         .map((value) => String(value).trim())
     )
   );
+}
+
+function getBookingIdentityValues(item) {
+  return [
+    item?.bookingId,
+    item?.referenceId,
+    item?._id,
+    item?.id,
+    item?.user?._id,
+    item?.user?.id,
+    item?.user?.email,
+    item?.user?.name,
+    item?.user?.fullName,
+    item?.user?.userName,
+    item?.userId,
+    item?.customerId,
+    item?.ownerId,
+    item?.customer?._id,
+    item?.customer?.id,
+    item?.customer?.email,
+    item?.customer?.name,
+    item?.customer?.fullName,
+    item?.customer?.userName,
+    item?.owner?._id,
+    item?.owner?.id,
+    item?.owner?.email,
+    item?.owner?.name,
+    item?.owner?.fullName,
+    item?.owner?.userName,
+    item?.advisor?._id,
+    item?.advisor?.id,
+    item?.advisor?.email,
+    item?.advisor?.name,
+    item?.advisor?.fullName,
+    item?.advisor?.userName,
+    item?.consultant?._id,
+    item?.consultant?.id,
+    item?.consultant?.email,
+    item?.consultant?.name,
+    item?.consultant?.fullName,
+    item?.consultant?.userName,
+    item?.advisorId,
+    item?.consultantId,
+    item?.userName,
+    item?.customerName,
+    item?.ownerName,
+    item?.advisorName,
+    item?.consultantName,
+    item?.email,
+    item?.phone,
+    typeof item?.user === "string" || typeof item?.user === "number"
+      ? item.user
+      : "",
+    typeof item?.customer === "string" || typeof item?.customer === "number"
+      ? item.customer
+      : "",
+    typeof item?.owner === "string" || typeof item?.owner === "number"
+      ? item.owner
+      : "",
+  ]
+    .filter(Boolean)
+    .map((value) => String(value).trim());
 }
 
 function matchesIdentity(sourceValues = [], targetValues = []) {
@@ -675,6 +814,9 @@ export default function UserCredit({ onNavigateScreen }) {
   const [chatHistoryLoading, setChatHistoryLoading] = useState(false);
   const [chatHistoryError, setChatHistoryError] = useState("");
   const [chatSessionsHistory, setChatSessionsHistory] = useState([]);
+  const [bookingHistory, setBookingHistory] = useState([]);
+  const [bookingHistoryLoading, setBookingHistoryLoading] = useState(false);
+  const [bookingHistoryError, setBookingHistoryError] = useState("");
   const [paymentHistory, setPaymentHistory] = useState([]);
   const [paymentHistoryLoading, setPaymentHistoryLoading] = useState(false);
   const [paymentHistoryError, setPaymentHistoryError] = useState("");
@@ -758,18 +900,32 @@ export default function UserCredit({ onNavigateScreen }) {
 
     setChatHistoryLoading(true);
     setChatHistoryError("");
+    setBookingHistoryLoading(true);
+    setBookingHistoryError("");
 
     try {
       const selectedIdentityValues = getIdentityValues(user);
-      const sessionResponse = await adminGet("chatSessions", {
-        params: { status: "all" },
-      });
-      const sessionItems = normalizeList(sessionResponse, [
-        "sessions",
-        "data",
-        "items",
-        "results",
-      ]);
+      const [sessionResponse, bookingsResponse, upcomingResponse] =
+        await Promise.allSettled([
+          adminGet("chatSessions", { params: { status: "all" } }),
+          adminGetBookings(),
+          adminGetUpcomingBookings(),
+        ]);
+
+      const sessionItems =
+        sessionResponse.status === "fulfilled"
+          ? normalizeList(sessionResponse.value, [
+              "sessions",
+              "data",
+              "items",
+              "results",
+            ])
+          : [];
+
+      const bookingItems = [
+        ...(bookingResponseItems(bookingsResponse) || []),
+        ...(bookingResponseItems(upcomingResponse) || []),
+      ];
 
       const matchedSessions = sessionItems.filter((session) => {
         const sessionIdentityValues = [
@@ -794,8 +950,16 @@ export default function UserCredit({ onNavigateScreen }) {
         return matchesIdentity(sessionIdentityValues, selectedIdentityValues);
       });
 
+      const matchedBookings = bookingItems.filter((booking) =>
+        matchesIdentity(getBookingIdentityValues(booking), selectedIdentityValues)
+      );
+
       const nextChatHistory = matchedSessions.map((session, index) =>
         normalizeSessionHistoryRecord(session, user, index)
+      );
+
+      const nextBookingHistory = matchedBookings.map((booking, index) =>
+        normalizeBookingHistoryRecord(booking, user, index)
       );
 
       const nextPaymentHistory = credits
@@ -809,24 +973,44 @@ export default function UserCredit({ onNavigateScreen }) {
       nextChatHistory.sort(
         (a, b) => new Date(b.date || 0) - new Date(a.date || 0)
       );
+      nextBookingHistory.sort(
+        (a, b) => new Date(b.date || 0) - new Date(a.date || 0)
+      );
       nextPaymentHistory.sort(
         (a, b) => new Date(b.date || 0) - new Date(a.date || 0)
       );
 
       setChatSessionsHistory(nextChatHistory);
+      setBookingHistory(nextBookingHistory);
       setPaymentHistory(nextPaymentHistory);
     } catch (err) {
       setChatSessionsHistory([]);
+      setBookingHistory([]);
       setPaymentHistory([]);
-      setChatHistoryError(
+      const message =
         err?.response?.data?.message ||
-          err?.message ||
-          "Chat history load nahi ho payi."
-      );
+        err?.message ||
+        "History load nahi ho payi.";
+      setChatHistoryError(message);
+      setBookingHistoryError(message);
     } finally {
       setChatHistoryLoading(false);
+      setBookingHistoryLoading(false);
     }
   };
+
+  function bookingResponseItems(response) {
+    if (response.status !== "fulfilled") {
+      return [];
+    }
+
+    return normalizeList(response.value, [
+      "bookings",
+      "data",
+      "items",
+      "results",
+    ]);
+  }
 
   const filteredCredits = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -873,7 +1057,12 @@ export default function UserCredit({ onNavigateScreen }) {
     setChatHistoryLoading(false);
     setChatHistoryError("");
     setChatSessionsHistory([]);
+    setBookingHistory([]);
+    setBookingHistoryLoading(false);
+    setBookingHistoryError("");
     setPaymentHistory([]);
+    setPaymentHistoryLoading(false);
+    setPaymentHistoryError("");
     setSelectedHistoryIds({});
   };
 
@@ -925,6 +1114,8 @@ export default function UserCredit({ onNavigateScreen }) {
     } finally {
       setPaymentHistoryLoading(false);
     }
+
+    loadSelectedUserHistory(user);
   };
 
   const submitAddCredit = async () => {
@@ -1023,6 +1214,17 @@ export default function UserCredit({ onNavigateScreen }) {
     { title: "Txn ID", key: "transactionId", width: 160 },
   ];
 
+  const bookingHistoryColumns = [
+    { title: "Unique ID", key: "uniqueId", width: 180 },
+    { title: "User Name", key: "userName", width: 170 },
+    { title: "Advisor", key: "readerName", width: 170 },
+    { title: "Service", key: "service", width: 150 },
+    { title: "Duration", key: "duration", width: 110 },
+    { title: "Status", key: "status", width: 120 },
+    { title: "Start", key: "createdDate", width: 170 },
+    { title: "Txn ID", key: "transactionId", width: 160 },
+  ];
+
   const paymentHistoryColumns = [
     { title: "Date", key: "date", width: 170 },
     { title: "Payment Method", key: "readerName", width: 150 },
@@ -1088,6 +1290,22 @@ export default function UserCredit({ onNavigateScreen }) {
     if (col.key === "date") {
       return (
         <Text style={styles.historyCellStrong}>{formatDate(item.date)}</Text>
+      );
+    }
+
+    if (col.key === "duration") {
+      const bookingMinutes =
+        item.kind === "booking"
+          ? item.raw?.durationMinutes ||
+            item.raw?.duration ||
+            item.raw?.slotMinutes ||
+            item.raw?.minutes
+          : null;
+
+      return (
+        <Text style={styles.historyCellStrong}>
+          {bookingMinutes ? `${bookingMinutes} min` : item.duration}
+        </Text>
       );
     }
 
@@ -1392,6 +1610,12 @@ export default function UserCredit({ onNavigateScreen }) {
                 </View>
                 <View style={styles.chatStatBox}>
                   <Text style={styles.chatStatValue}>
+                    {bookingHistory.length}
+                  </Text>
+                  <Text style={styles.chatStatLabel}>Bookings</Text>
+                </View>
+                <View style={styles.chatStatBox}>
+                  <Text style={styles.chatStatValue}>
                     {paymentHistory.length}
                   </Text>
                   <Text style={styles.chatStatLabel}>Payment Records</Text>
@@ -1417,6 +1641,26 @@ export default function UserCredit({ onNavigateScreen }) {
               </View>
             ) : null}
 
+            {bookingHistoryLoading ? (
+              <View style={styles.statusBox}>
+                <ActivityIndicator color="#7C3AED" />
+                <Text style={styles.statusText}>
+                  Booking history loading...
+                </Text>
+              </View>
+            ) : null}
+
+            {bookingHistoryError ? (
+              <View style={styles.statusBox}>
+                <Ionicons
+                  name="alert-circle-outline"
+                  size={18}
+                  color="#DC2626"
+                />
+                <Text style={styles.statusText}>{bookingHistoryError}</Text>
+              </View>
+            ) : null}
+
             <ScrollView
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.chatModalScroll}
@@ -1427,6 +1671,19 @@ export default function UserCredit({ onNavigateScreen }) {
                   <DataTable
                     columns={chatHistoryColumns}
                     data={chatSessionsHistory}
+                    renderCell={renderHistoryCell}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.historySection}>
+                <Text style={styles.historySectionTitle}>
+                  Booking / Slot History
+                </Text>
+                <View style={styles.historyTableCard}>
+                  <DataTable
+                    columns={bookingHistoryColumns}
+                    data={bookingHistory}
                     renderCell={renderHistoryCell}
                   />
                 </View>
@@ -1523,6 +1780,12 @@ export default function UserCredit({ onNavigateScreen }) {
                 </View>
                 <View style={styles.chatStatBox}>
                   <Text style={styles.chatStatValue}>
+                    {bookingHistory.length}
+                  </Text>
+                  <Text style={styles.chatStatLabel}>Bookings</Text>
+                </View>
+                <View style={styles.chatStatBox}>
+                  <Text style={styles.chatStatValue}>
                     {paymentHistory
                       .reduce((sum, item) => sum + toNumber(item.amount), 0)
                       .toLocaleString("en-IN")}
@@ -1552,6 +1815,26 @@ export default function UserCredit({ onNavigateScreen }) {
               </View>
             ) : null}
 
+            {bookingHistoryLoading ? (
+              <View style={styles.statusBox}>
+                <ActivityIndicator color="#7C3AED" />
+                <Text style={styles.statusText}>
+                  Booking history loading...
+                </Text>
+              </View>
+            ) : null}
+
+            {bookingHistoryError ? (
+              <View style={styles.statusBox}>
+                <Ionicons
+                  name="alert-circle-outline"
+                  size={18}
+                  color="#DC2626"
+                />
+                <Text style={styles.statusText}>{bookingHistoryError}</Text>
+              </View>
+            ) : null}
+
             <ScrollView
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.chatModalScroll}
@@ -1562,6 +1845,19 @@ export default function UserCredit({ onNavigateScreen }) {
                   <DataTable
                     columns={paymentHistoryColumns}
                     data={paymentHistory}
+                    renderCell={renderHistoryCell}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.historySection}>
+                <Text style={styles.historySectionTitle}>
+                  Booking / Slot History
+                </Text>
+                <View style={styles.historyTableCard}>
+                  <DataTable
+                    columns={bookingHistoryColumns}
+                    data={bookingHistory}
                     renderCell={renderHistoryCell}
                   />
                 </View>

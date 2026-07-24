@@ -57,6 +57,12 @@ export const adminMenu = [
     icon: "hourglass-outline",
   },
   {
+    id: 8.11,
+    title: "Slot Booking",
+    screen: "SlotBookings",
+    icon: "calendar-number-outline",
+  },
+  {
     id: 8.2,
     title: "Availability",
     screen: "Availability",
